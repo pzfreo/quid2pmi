@@ -34,9 +34,12 @@ structurally the same kind as the NIST reference suite's:
 | `ANNOTATION_CURVE_OCCURRENCE` | 0 | 0 |
 | **`CAMERA_MODEL_D3`** | **1** | **0** |
 
-The only structural difference is the saved view, which OCCT's writer cannot produce. That is
-now the best-evidenced explanation for CAD Assistant drawing nothing: the annotations are
-present and well formed, but nothing activates them.
+The only structural difference is the saved view, which OCCT's writer cannot produce.
+
+That looked like the explanation for CAD Assistant drawing nothing, and it is not.
+[`tools/savedview`](../savedview) adds one, OCCT's reader confirms it reads exactly as many
+saved views from the result as from the NIST file, and CAD Assistant still draws no annotation
+text. The annotations are sound; that viewer simply does not render them.
 
 ## Two patches are applied during the build
 

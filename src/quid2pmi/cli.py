@@ -90,6 +90,13 @@ def build_parser() -> argparse.ArgumentParser:
         + "; ".join(f"{name} -- {p.summary}" for name, p in sorted(PROFILES.items())),
     )
     parser.add_argument(
+        "--text-in",
+        choices=("geometry", "annotation"),
+        help="where --draw-text puts the label text: as model geometry, which any "
+        "viewer renders, or inside the PMI annotation, which is far smaller but "
+        "needs a viewer that draws graphical PMI (default: from --profile)",
+    )
+    parser.add_argument(
         "--draw-text",
         action="store_true",
         help="also draw label text as annotation geometry. CAD Assistant does not "
@@ -176,6 +183,7 @@ def main(argv: list[str] | None = None) -> int:
                 colours=not args.no_colour,
                 draw_text=args.draw_text,
                 profile=viewer,
+                text_in=args.text_in,
                 quiet=not args.verbose,
                 progress=phase,
             )

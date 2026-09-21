@@ -110,8 +110,11 @@ draws none of it. The same outlines added as ordinary geometry, in a separate sh
 `quiddity labels`, render everywhere, and that is what `--draw-text` does — at the cost of
 turning text into B-rep.
 
-If a saved view can be written, `--draw-text` should become unnecessary: the annotations are
-already in the file and cost nothing.
+A saved view was tried and does **not** help. `tools/savedview` injects a `CAMERA_MODEL_D3`
+wired as the NIST reference files wire it, and OCCT's reader confirms it: one saved view, the
+same count it reads from `nist_ctc_01_asme1_ap242-e1.stp`. CAD Assistant still draws none of
+the annotation text. So the missing saved view was not the explanation, and text as geometry
+remains the only route that works there.
 
 ### Viewer profiles
 
@@ -179,7 +182,8 @@ directly.
 | `--explain-width` | wrap explanation text at this many characters (default 44) |
 | `--no-colour` | do not colour each feature's faces by family |
 | `--profile` | viewer to write for: `cad-assistant` (default) or `ap242` |
-| `--draw-text` | add the label text to the model as geometry (see size cost below) |
+| `--draw-text` | add the label text to the model (see size cost below) |
+| `--text-in` | where `--draw-text` puts it: `geometry` or `annotation` |
 | `--json` | also write the annotation list as JSON |
 | `-q, --quiet` | suppress the summary |
 | `-v, --verbose` | also show the STEP writer's own progress output |
