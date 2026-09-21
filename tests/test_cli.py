@@ -51,16 +51,13 @@ def test_without_quiet_the_summary_is_printed(sample_step, tmp_path, capfd):
 
 
 def test_cli_draw_text_flag_adds_label_geometry(sample_step, tmp_path):
-    from tests.test_convert import read_pmi
-
     plain = tmp_path / "plain.step"
     drawn = tmp_path / "drawn.step"
     assert main([str(sample_step), "-o", str(plain), "-q"]) == 0
     assert main([str(sample_step), "-o", str(drawn), "-q", "--explain", "--draw-text"]) == 0
 
-    plain_edges = sum(edges for _, _, edges, _ in read_pmi(plain))
-    drawn_edges = sum(edges for _, _, edges, _ in read_pmi(drawn))
-    assert drawn_edges > plain_edges
+    assert "quiddity labels" in drawn.read_text(errors="ignore")
+    assert "quiddity labels" not in plain.read_text(errors="ignore")
     assert plain.stat().st_size < drawn.stat().st_size
 
 

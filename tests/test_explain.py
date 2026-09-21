@@ -136,15 +136,26 @@ def test_explanations_live_in_the_json_report_not_the_step(sample_step, tmp_path
     assert all(label["explanation"] for label in payload["labels"])
 
 
-def test_draw_text_adds_geometry_and_keeps_the_same_names(sample_step, tmp_path):
+def test_draw_text_adds_the_labels_as_geometry(sample_step, tmp_path):
+    """Text goes in as a named shape, not as an annotation a viewer ignores."""
+    plain = convert(sample_step, tmp_path / "plain.step")
+    drawn = convert(sample_step, tmp_path / "drawn.step", explain=True, draw_text=True)
+
+    assert "quiddity labels" not in plain.output.read_text(errors="ignore")
+    assert "quiddity labels" in drawn.output.read_text(errors="ignore")
+    assert drawn.output.stat().st_size > plain.output.stat().st_size
+
+
+def test_draw_text_keeps_the_pmi_presentations_small(sample_step, tmp_path):
+    """Glyph outlines in a PMI presentation are never drawn and crash the
+    importer at a part's worth of them, so only the leader goes in there."""
     plain = convert(sample_step, tmp_path / "plain.step")
     drawn = convert(sample_step, tmp_path / "drawn.step", explain=True, draw_text=True)
 
     plain_pmi = {name: edges for _, _, edges, name in read_pmi(plain.output)}
     drawn_pmi = {name: edges for _, _, edges, name in read_pmi(drawn.output)}
-
-    assert set(plain_pmi) == set(drawn_pmi)
-    assert all(drawn_pmi[name] > plain_pmi[name] for name in plain_pmi)
+    assert plain_pmi == drawn_pmi
+    assert all(edges < 20 for edges in drawn_pmi.values())
 
 
 def test_explanation_is_reported_whether_or_not_it_is_drawn(sample_step, tmp_path):

@@ -65,19 +65,28 @@ kinds of annotation and they do not all survive to the screen:
 | Channel | Reaches the STEP file | Visible in CAD Assistant |
 | --- | --- | --- |
 | Face colour per feature family | yes | **yes** — the main signal |
-| Semantic PMI dimension (Ø, R, thickness, length, angle) | yes | **yes**, with its own leader |
+| Semantic PMI dimension (Ø, R, angle) | yes | **yes**, with its own leader |
+| Label text as geometry (`--draw-text`) | yes | **yes** |
 | Dimension name (`HOLE Ø8 THRU`) | yes | in the annotation's properties |
-| Graphical PMI — label text drawn as geometry | yes | **no** (see below) |
+| Label text as AP242 graphical PMI | yes | **no** (see below) |
 | Sub-shape names on faces | **no** — OCCT does not export them | no |
-| Plain-words explanation | no | no — use `--json` |
 
-**Why the drawn text does not show.** OCCT writes the labels as 60 `DRAUGHTING_CALLOUT`
-entities associated to a `DRAUGHTING_MODEL`, but writes **no AP242 saved view**: there are zero
-`CAMERA_MODEL_D3` and `PRESENTATION_VIEW` entities, because `STEPCAFControl_Writer` has no view
-mode at all — only the *reader* has `SetViewMode`. Viewers drive graphical PMI display from
-saved views, so there is nothing to switch on. Drawing the text costs about 33x the file size
-(13.2 MB against 0.40 MB on a 60-feature part) for nothing, so it is off by default and
-available as `--draw-text` for viewers that do render graphical PMI.
+**Why annotation text is written as geometry.** OCCT can put the label into the PMI
+presentation, and does write it: 60 `DRAUGHTING_CALLOUT` entities on a `DRAUGHTING_MODEL`. But
+it writes **no AP242 saved view** — zero `CAMERA_MODEL_D3` and `PRESENTATION_VIEW` entities,
+because `STEPCAFControl_Writer` has no view mode at all, only the *reader* has `SetViewMode`.
+Viewers drive graphical PMI display from saved views, so there is nothing to switch on: CAD
+Assistant draws none of it, and a part's worth of those callouts crashes its importer. The same
+outlines added as ordinary geometry, in a separate shape named `quiddity labels`, render
+everywhere. That is what `--draw-text` does.
+
+**A dimension named `thickness` crashes CAD Assistant.** `Size_Thickness` makes OCCT write
+`DIMENSIONAL_SIZE(...,'thickness')`, and importing that segfaults CAD Assistant. Measured on one
+part with sixteen chamfers, holding everything else constant: `'thickness'` crashes, while
+`'curve length'`, `'radius'` and `ANGULAR_SIZE` all open. Six families carry a thickness-like
+size, so this is not a corner case. `Size_Thickness` is never used; thickness and length both
+map to `Size_CurveLength`, both being linear sizes of a single feature. A test asserts the
+string never appears in output.
 
 ### Explaining what was found
 
@@ -93,10 +102,20 @@ CHAMFER 1x1 45deg
   Turned chamfer about the Z axis, legs 1 and 1 at 45 degrees.
 ```
 
-These are always in `--json` and on the annotations the Python API returns. They cannot be put
-on the model itself: CAD Assistant renders neither the drawn label text nor sub-shape names, so
-writing them there would look like information the viewer does not actually show. `--explain`
-adds them to the drawn labels, which only matters together with `--draw-text`.
+These are always in `--json` and on the annotations the Python API returns. `--draw-text` also
+puts them on the model as geometry, where a viewer will actually render them.
+
+Text becomes B-rep geometry, at roughly 14 KB per character, so what you draw sets the file
+size. Measured on a 60-feature part:
+
+| drawn | characters | file |
+| --- | --- | --- |
+| nothing — colour and PMI only (default) | 0 | 0.4 MB |
+| terse labels (`--draw-text`) | 810 | 11.3 MB |
+| full explanations (`--draw-text --explain`) | 5209 | 80.4 MB |
+
+Narrow the families or the explanation width if that matters; both reduce the character count
+directly.
 
 ### Options
 
@@ -111,7 +130,7 @@ adds them to the drawn labels, which only matters together with `--draw-text`.
 | `-e, --explain` | include the plain-words explanation in drawn labels (needs `--draw-text`) |
 | `--explain-width` | wrap explanation text at this many characters (default 44) |
 | `--no-colour` | do not colour each feature's faces by family |
-| `--draw-text` | draw label text as geometry; invisible in CAD Assistant, ~33x file size |
+| `--draw-text` | add the label text to the model as geometry (see size cost below) |
 | `--json` | also write the annotation list as JSON |
 | `-q, --quiet` | suppress the summary |
 

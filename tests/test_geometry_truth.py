@@ -18,8 +18,9 @@ from quiddity import import_step_geometry
 
 from quid2pmi import convert
 from quid2pmi.layout import BoundingBox, layout
-from quid2pmi.model import DIM_ANGLE
+from quid2pmi.model import DIM_ANGLE, DIM_THICKNESS
 from quid2pmi.sightlines import SightTester
+from tests.test_convert import read_pmi
 
 
 @pytest.fixture(scope="module")
@@ -129,3 +130,26 @@ def test_labels_survive_into_the_step_file_whole(converted):
     for annotation in report.annotations:
         head = annotation.label.encode("ascii", "ignore").decode().split()[0]
         assert f"SHAPE_ASPECT('{head}" in written, annotation.label
+
+
+def test_never_writes_a_thickness_dimension(converted):
+    """DIMENSIONAL_SIZE(...,'thickness') segfaults CAD Assistant's importer.
+
+    Measured on this part, holding everything else constant: the same file with
+    its sixteen chamfers typed as 'thickness' crashes on import, while
+    'curve length', 'radius' and ANGULAR_SIZE all open. Six families carry a
+    thickness-like size, so this is a property of the output, not of chamfers.
+    """
+    report, _ = converted
+    assert "'thickness'" not in report.output.read_text(errors="ignore")
+
+
+def test_thickness_families_still_carry_their_value(converted):
+    report, _ = converted
+    sized = [a for a in report.annotations if a.dimension == DIM_THICKNESS]
+    assert sized, "fixture no longer exercises a thickness-like size"
+    written = {name: (kind, value) for kind, value, _, name in read_pmi(report.output)}
+    for annotation in sized:
+        kind, value = written[annotation.label]
+        assert kind.startswith("Size")
+        assert value == pytest.approx(float(annotation.value), rel=1e-6)

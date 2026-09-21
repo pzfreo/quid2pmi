@@ -37,7 +37,6 @@ from OCP.XCAFDimTolObjects import (
     XCAFDimTolObjects_DimensionType_Size_CurveLength,
     XCAFDimTolObjects_DimensionType_Size_Diameter,
     XCAFDimTolObjects_DimensionType_Size_Radius,
-    XCAFDimTolObjects_DimensionType_Size_Thickness,
 )
 from OCP.XCAFDoc import XCAFDoc_ColorType, XCAFDoc_Dimension, XCAFDoc_DocumentTool
 
@@ -59,10 +58,21 @@ from .palette import colour_for
 DIMENSION_TYPES: dict[str, Any] = {
     DIM_DIAMETER: XCAFDimTolObjects_DimensionType_Size_Diameter,
     DIM_RADIUS: XCAFDimTolObjects_DimensionType_Size_Radius,
-    DIM_THICKNESS: XCAFDimTolObjects_DimensionType_Size_Thickness,
+    # Size_Thickness is deliberately not used. It writes DIMENSIONAL_SIZE with the
+    # name 'thickness', which segfaults CAD Assistant on import. Measured on one
+    # part with sixteen chamfers, holding everything else constant: 'thickness'
+    # crashes, while 'curve length', 'radius' and ANGULAR_SIZE all open. Both
+    # thickness and length are linear sizes of one feature, so they share a type.
+    DIM_THICKNESS: XCAFDimTolObjects_DimensionType_Size_CurveLength,
     DIM_LENGTH: XCAFDimTolObjects_DimensionType_Size_CurveLength,
     DIM_ANGLE: XCAFDimTolObjects_DimensionType_Size_Angular,
 }
+
+#: Never written: it crashes CAD Assistant's importer. Asserted by the tests.
+FATAL_DIMENSION_NAME = "thickness"
+
+#: Colour of the label text added as geometry.
+LABEL_COLOUR = (0.12, 0.12, 0.14)
 
 #: Used when a feature has no semantic value: a graphical annotation and nothing more.
 PRESENTATION_ONLY = XCAFDimTolObjects_DimensionType_DimensionPresentation
@@ -82,18 +92,14 @@ def _dir(value: tuple[float, float, float]) -> gp_Dir:
     return gp_Dir(float(value[0]), float(value[1]), float(value[2]))
 
 
-def _text_edges(label: PlacedLabel, font: str) -> list[TopoDS_Shape]:
-    """Outlines of the label's text, as edges lying in the label's plane.
-
-    OCCT writes a PMI presentation from the edges of the presentation shape, so
-    the text is emitted as glyph outlines rather than filled faces.
-    """
+def _text_shape(label: PlacedLabel, font: str) -> Compound | None:
+    """The label's text as filled glyph faces, lying in the label's plane."""
     plane = Plane(
         origin=Vector(*label.origin),
         x_dir=Vector(*label.x_dir),
         z_dir=Vector(*_plane_normal(label)),
     )
-    edges: list[TopoDS_Shape] = []
+    rows: list[Compound] = []
     for row, line in enumerate(label.annotation.text):
         if not line.strip():
             continue
@@ -106,11 +112,22 @@ def _text_edges(label: PlacedLabel, font: str) -> list[TopoDS_Shape]:
         placed = (
             Location((-bbox.min.X, -bbox.max.Y - row * LINE_PITCH * label.height, 0.0)) * glyphs
         )
-        placed = plane.location * placed
-        explorer = TopExp_Explorer(placed.wrapped, TopAbs_EDGE)
-        while explorer.More():
-            edges.append(explorer.Current())
-            explorer.Next()
+        rows.append(plane.location * placed)
+    if not rows:
+        return None
+    return Compound(children=rows)
+
+
+def _text_edges(label: PlacedLabel, font: str) -> list[TopoDS_Shape]:
+    """Glyph outlines of the label's text, as edges."""
+    shape = _text_shape(label, font)
+    if shape is None:
+        return []
+    edges: list[TopoDS_Shape] = []
+    explorer = TopExp_Explorer(shape.wrapped, TopAbs_EDGE)
+    while explorer.More():
+        edges.append(explorer.Current())
+        explorer.Next()
     return edges
 
 
@@ -226,7 +243,10 @@ def build_document(
     written: list[PlacedLabel] = []
     for label in labels:
         annotation = label.annotation
-        presentation = _presentation(label, font, leaders, text=draw_text)
+        # Only the leader goes into the PMI presentation. Glyph outlines there are
+        # never drawn and a part's worth of them crashes the importer; the text is
+        # added as geometry instead.
+        presentation = _presentation(label, font, leaders, text=False)
         if presentation is None:
             continue
         written.append(label)
@@ -255,7 +275,52 @@ def build_document(
         dimension.SetObject(obj)
         dimtol_tool.SetDimension(register(annotation), dim_label)
 
+    if draw_text:
+        _add_label_geometry(doc, shape_tool, colour_tool, written, font, colours)
+
     return doc, written, len(painted)
+
+
+def _add_label_geometry(
+    doc: TDocStd_Document,
+    shape_tool: Any,
+    colour_tool: Any,
+    labels: list[PlacedLabel],
+    font: str,
+    colours: bool,
+) -> None:
+    """Add the label text to the document as ordinary geometry.
+
+    A viewer renders geometry. It does not necessarily render an AP242 graphical
+    annotation: OCCT writes those as curve-based annotation occurrences with no
+    saved view to activate them, and CAD Assistant draws none of it -- and
+    segfaults on importing a part's worth of them. The same outlines in a
+    separate, clearly named shape are ordinary geometry, at the cost of adding a
+    second shape to the file alongside the untouched part.
+    """
+    builder = BRep_Builder()
+    compound = TopoDS_Compound()
+    builder.MakeCompound(compound)
+    count = 0
+    for label in labels:
+        # Glyph outlines, not filled faces: a face carries a surface per character
+        # and the file grows several-fold for text that reads the same either way.
+        for edge in _text_edges(label, font):
+            builder.Add(compound, edge)
+            count += 1
+    if not count:
+        return
+    label = shape_tool.AddShape(compound, False)
+    if label.IsNull():
+        return
+    TDataStd_Name.Set_s(label, TCollection_ExtendedString("quiddity labels"))
+    if colours:
+        red, green, blue = LABEL_COLOUR
+        colour_tool.SetColor(
+            label,
+            Quantity_Color(red, green, blue, Quantity_TOC_sRGB),
+            XCAFDoc_ColorType.XCAFDoc_ColorSurf,
+        )
 
 
 @contextmanager
