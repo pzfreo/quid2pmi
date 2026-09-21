@@ -46,6 +46,7 @@ from .model import (
     DIM_LENGTH,
     DIM_RADIUS,
     DIM_THICKNESS,
+    Annotation,
 )
 
 # Every annotation quid2pmi writes describes one feature, so it is attached to a
@@ -165,6 +166,30 @@ def build_document(
 
     shape_label = shape_tool.AddShape(shape, False)
     TDataStd_Name.Set_s(shape_label, TCollection_ExtendedString(name))
+    subshapes: dict[int, Any] = {}
+
+    def attach_to(annotation: Annotation) -> Any:
+        """The label a dimension should reference: the feature's own faces if known.
+
+        Attaching to the top-level shape would make every annotation address the
+        whole solid. Adding the feature's faces as XCAF sub-shapes makes the PMI
+        reference the geometry it actually describes, so selecting the annotation
+        in a viewer highlights that feature.
+        """
+        for face in annotation.faces:
+            wrapped = getattr(face, "wrapped", None)
+            if wrapped is None:
+                continue
+            key = wrapped.HashCode(0x7FFFFFFF) if hasattr(wrapped, "HashCode") else id(wrapped)
+            existing = subshapes.get(key)
+            if existing is not None:
+                return existing
+            sub_label = shape_tool.AddSubShape(shape_label, wrapped)
+            if not sub_label.IsNull():
+                TDataStd_Name.Set_s(sub_label, TCollection_ExtendedString(annotation.label))
+                subshapes[key] = sub_label
+                return sub_label
+        return shape_label
 
     written: list[PlacedLabel] = []
     for label in labels:
@@ -189,7 +214,7 @@ def build_document(
         TDataStd_Name.Set_s(dim_label, TCollection_ExtendedString(annotation.label))
         dimension = XCAFDoc_Dimension.Set_s(dim_label)
         dimension.SetObject(obj)
-        dimtol_tool.SetDimension(shape_label, dim_label)
+        dimtol_tool.SetDimension(attach_to(annotation), dim_label)
 
     return doc, written
 

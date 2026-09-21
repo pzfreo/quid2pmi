@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
 from quiddity import build_raw_recognition_result, import_step_geometry
 
 from .adapters import EXCLUDED_FAMILIES, FEATURE_FAMILIES, SUMMARY_FAMILIES, annotate
+from .evidence import annotate_from_evidence
+from .geometry import snap_to_axis
 from .layout import BoundingBox, layout
 from .model import Annotation
+from .sightlines import SightTester
 from .step_pmi import build_document, write_step
 
 ALL_FAMILIES: frozenset[str] = frozenset(FEATURE_FAMILIES) | frozenset(SUMMARY_FAMILIES)
@@ -26,6 +29,10 @@ class ConversionReport:
     counts: dict[str, int]
     unplaced: dict[str, int]
     undrawn: dict[str, int]
+    #: Labels whose leader had to cross the solid because no direction was clear.
+    obstructed: int
+    #: Annotations attached to the feature's own faces rather than the whole part.
+    attached: int
     annotations: tuple[Annotation, ...]
 
     @property
@@ -40,6 +47,8 @@ class ConversionReport:
             "counts": dict(sorted(self.counts.items())),
             "unplaced": dict(sorted(self.unplaced.items())),
             "undrawn": dict(sorted(self.undrawn.items())),
+            "obstructed": self.obstructed,
+            "attached": self.attached,
             "labels": [
                 {
                     "family": a.family,
@@ -48,6 +57,7 @@ class ConversionReport:
                     "value": a.value,
                     "dimension": a.dimension,
                     "explanation": a.explanation,
+                    "faces": len(a.faces),
                 }
                 for a in self.annotations
             ],
@@ -114,15 +124,38 @@ def convert(
     is drawn.
     """
     part = import_step_geometry(str(source))
-    result = build_raw_recognition_result(part)
-
     selected = families if families is not None else set(FEATURE_FAMILIES)
-    annotations, unplaced = annotate(result, selected)
+
+    # Prefer the evidence view: it anchors each label on the feature's own proven
+    # faces. Families it does not publish -- the pattern summaries -- fall back to
+    # the record-derived anchors.
+    annotations, unplaced, covered = annotate_from_evidence(part, selected)
+    remaining = selected - covered
+    if remaining:
+        result = build_raw_recognition_result(part)
+        extra, extra_unplaced = annotate(result, remaining)
+        annotations.extend(extra)
+        for family, count in extra_unplaced.items():
+            unplaced[family] = unplaced.get(family, 0) + count
+
+    box = _bounding_box(part)
+    tester = SightTester(part.wrapped, box.diagonal * 4.0)
+    obstructed = 0
+    sighted: list[Annotation] = []
+    for annotation in annotations:
+        # Test the direction the layout will actually use. The layout snaps a label
+        # to one of the six bounding box faces, so sight-testing an unsnapped face
+        # normal would clear a direction that is then never used.
+        preferred = [snap_to_axis(annotation.normal)] if annotation.normal is not None else []
+        direction, clear = tester.choose(annotation.anchor, preferred)
+        obstructed += 0 if clear else 1
+        sighted.append(replace(annotation, normal=direction))
+    annotations = sighted
 
     drawn = [a.explained(explain_width) for a in annotations] if explain else annotations
     source_of = {id(d): a for d, a in zip(drawn, annotations, strict=True)}
 
-    placed = layout(drawn, _bounding_box(part), text_height=text_height, standoff=standoff)
+    placed = layout(drawn, box, text_height=text_height, standoff=standoff)
     doc, written = build_document(
         part.wrapped, placed, name=source.stem, font=font, leaders=leaders
     )
@@ -140,4 +173,5 @@ def convert(
         if attempted[family] > counts.get(family, 0)
     }
 
-    return ConversionReport(source, output, counts, unplaced, undrawn, kept)
+    attached = sum(1 for a in kept if a.faces)
+    return ConversionReport(source, output, counts, unplaced, undrawn, obstructed, attached, kept)

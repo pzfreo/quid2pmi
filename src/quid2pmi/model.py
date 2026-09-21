@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import textwrap
 from dataclasses import dataclass, field, replace
+from typing import Any
 
 Vec = tuple[float, float, float]
 
@@ -38,6 +39,9 @@ class Annotation:
     dimension: str | None = None
     explanation: str = ""
     name: str = ""
+    #: The part's own faces this feature is made of, when recognition proved them.
+    #: Excluded from equality: they carry live topology, not comparable values.
+    faces: tuple[Any, ...] = field(default_factory=tuple, compare=False, repr=False)
     detail: dict[str, object] = field(default_factory=dict)
 
     @property

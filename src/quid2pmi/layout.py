@@ -1,10 +1,10 @@
 """Place annotation labels around the part so they are readable and do not overlap.
 
 Every label is assigned to one of the six faces of the part's bounding box, which
-gives a single text plane per group. Within a group the labels are laid out in
-that plane's 2D coordinates, starting from each feature's own projected position
-and pushed apart only where they would collide. Each label keeps a leader line
-back to the point it describes.
+gives a single text plane per group. Within a group the labels are laid out on a
+bounded grid in that plane: each one takes the free cell nearest its own feature,
+so labels stay beside what they describe and the block as a whole cannot run away
+from the part. Each label keeps a leader line back to the point it describes.
 """
 
 from __future__ import annotations
@@ -21,6 +21,8 @@ LINE_PITCH = 1.45
 STANDOFF_FRACTION = 0.10
 #: Nominal glyph advance as a fraction of text height, for collision boxes.
 GLYPH_WIDTH = 0.62
+#: Gap between neighbouring grid cells, as a fraction of text height.
+CELL_GAP = 0.8
 
 
 @dataclass(frozen=True)
@@ -53,6 +55,11 @@ class PlacedLabel:
     height: float
     leader: tuple[Vec, ...]
 
+    @property
+    def normal(self) -> Vec:
+        x, y = self.x_dir, self.y_dir
+        return cross(x, y)
+
 
 def _plane_axes(normal: Vec) -> tuple[Vec, Vec]:
     """In-plane right and up directions for a label plane, chosen so text is upright.
@@ -60,13 +67,8 @@ def _plane_axes(normal: Vec) -> tuple[Vec, Vec]:
     For a label read along a horizontal direction, "up" is world +Z. For one read
     along Z there is no such preference, so world +Y is used instead.
     """
-    if abs(normal[2]) > 0.9:
-        up_hint: Vec = (0.0, 1.0, 0.0)
-    else:
-        up_hint = (0.0, 0.0, 1.0)
-    x_dir = normalise(cross(up_hint, normal))
-    if x_dir is None:  # pragma: no cover - guarded by the hint choice above
-        x_dir = (1.0, 0.0, 0.0)
+    up_hint: Vec = (0.0, 1.0, 0.0) if abs(normal[2]) > 0.9 else (0.0, 0.0, 1.0)
+    x_dir = normalise(cross(up_hint, normal)) or (1.0, 0.0, 0.0)
     y_dir = normalise(cross(normal, x_dir)) or (0.0, 0.0, 1.0)
     return x_dir, y_dir
 
@@ -78,13 +80,50 @@ def _direction_for(annotation: Annotation, box: BoundingBox) -> Vec:
         if unit is not None:
             return snap_to_axis(unit)
     outward = normalise(sub(annotation.anchor, box.centre))
-    if outward is None:
-        return (0.0, 0.0, 1.0)
-    return snap_to_axis(outward)
+    return snap_to_axis(outward) if outward is not None else (0.0, 0.0, 1.0)
 
 
-def _overlaps(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> bool:
-    return not (a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1])
+def _spiral(count: int) -> list[tuple[int, int]]:
+    """Grid offsets ordered by how far they sit from the origin cell."""
+    reach = int(math.isqrt(max(count, 1))) + 2
+    cells = [
+        (column, row) for column in range(-reach, reach + 1) for row in range(-reach, reach + 1)
+    ]
+    cells.sort(key=lambda cell: (abs(cell[0]) + abs(cell[1]), abs(cell[1]), cell[0], cell[1]))
+    return cells
+
+
+def _assign_cells(
+    projected: list[tuple[float, float, Annotation]],
+    cell_w: float,
+    cell_h: float,
+) -> list[tuple[float, float, Annotation]]:
+    """Give each label the free grid cell nearest its own feature.
+
+    Snapping to a grid bounds the layout: a label can only ever move to a cell,
+    and cells are allocated outward from the feature, so a crowded face spreads
+    sideways rather than marching off to infinity.
+    """
+    offsets = _spiral(len(projected))
+    taken: set[tuple[int, int]] = set()
+    placed: list[tuple[float, float, Annotation]] = []
+    # Outermost features choose first, so they keep the outer cells.
+    order = sorted(
+        range(len(projected)),
+        key=lambda i: -(projected[i][0] ** 2 + projected[i][1] ** 2),
+    )
+    for index in order:
+        u, v, annotation = projected[index]
+        home = (round(u / cell_w), round(v / cell_h))
+        for du, dv in offsets:
+            cell = (home[0] + du, home[1] + dv)
+            if cell not in taken:
+                taken.add(cell)
+                placed.append((cell[0] * cell_w, cell[1] * cell_h, annotation))
+                break
+        else:  # pragma: no cover - the spiral is sized to always have room
+            placed.append((u, v, annotation))
+    return placed
 
 
 def layout(
@@ -107,39 +146,26 @@ def layout(
     placed: list[PlacedLabel] = []
     for normal, members in groups.items():
         x_dir, y_dir = _plane_axes(normal)
-        plane_offset = box.extent_along(normal) + clearance
-        plane_point = add(box.centre, scale(normal, plane_offset))
+        plane_point = add(box.centre, scale(normal, box.extent_along(normal) + clearance))
         base = dot(plane_point, normal)
 
-        # Project each anchor into the plane's own 2D coordinates.
-        projected: list[tuple[float, float, Annotation]] = []
-        for annotation in members:
-            rel = sub(annotation.anchor, plane_point)
-            projected.append((dot(rel, x_dir), dot(rel, y_dir), annotation))
-        projected.sort(key=lambda item: (-item[1], item[0]))
-
-        taken: list[tuple[float, float, float, float]] = []
-        for u, v, annotation in projected:
-            rows = len(annotation.text)
-            widest = max(len(line) for line in annotation.text)
-            width = widest * GLYPH_WIDTH * height
-            block = rows * LINE_PITCH * height
-            # Start at the feature's own position, then slide up until clear.
-            cu, cv = u, v
-            attempts = 0
-            while attempts < 200:
-                candidate = (cu, cv - block, cu + width, cv)
-                if not any(_overlaps(candidate, other) for other in taken):
-                    break
-                cv += LINE_PITCH * height
-                attempts += 1
-            taken.append((cu, cv - block, cu + width, cv))
-
-            origin = add(
-                add(plane_point, scale(x_dir, cu)),
-                scale(y_dir, cv - LINE_PITCH * height),
+        projected = [
+            (
+                dot(sub(a.anchor, plane_point), x_dir),
+                dot(sub(a.anchor, plane_point), y_dir),
+                a,
             )
-            # Leader: out of the label's left edge, then straight to the feature.
+            for a in members
+        ]
+        widest = max(max(len(line) for line in a.text) for a in members)
+        tallest = max(len(a.text) for a in members)
+        cell_w = widest * GLYPH_WIDTH * height + CELL_GAP * height
+        cell_h = tallest * LINE_PITCH * height + CELL_GAP * height
+
+        for u, v, annotation in _assign_cells(projected, cell_w, cell_h):
+            origin = add(add(plane_point, scale(x_dir, u)), scale(y_dir, v))
+            # Leader: out of the label's lower-left corner, across the label plane
+            # to the feature's own position in it, then straight in to the feature.
             elbow = add(origin, scale(y_dir, -0.35 * height))
             gap = base - dot(annotation.anchor, normal)
             anchor_in_plane = add(annotation.anchor, scale(normal, gap))

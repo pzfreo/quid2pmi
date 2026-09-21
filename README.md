@@ -154,6 +154,10 @@ Known limits:
   standoff may want raising with `--standoff`.
 * Explanations restate the record Quiddity produced. They describe what was recognised, not
   how the feature was manufactured or why it is there.
+* Label text is written as glyph outline geometry, because that is what an AP242 graphical
+  annotation carries. `--explain` therefore makes files substantially larger -- on a 60-feature
+  part, roughly 2 MB terse against 14 MB explained. Narrow the families or raise
+  `--explain-width` if that matters.
 * A feature is annotated with an AP242 *size* dimension or a presentation-only annotation.
   Location dimensions are measured between two shapes, which a single-feature annotation does
   not have, and OCCT's AP242 writer crashes when asked to write one from a single reference.
