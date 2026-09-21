@@ -155,8 +155,8 @@ def test_report_counts_only_what_reached_the_file(sample_step, tmp_path, monkeyp
     real = convert_module.build_document
 
     def drop_one(shape, labels, **kwargs):
-        doc, written = real(shape, labels, **kwargs)
-        return doc, written[:-1]
+        doc, written, coloured = real(shape, labels, **kwargs)
+        return doc, written[:-1], coloured
 
     monkeypatch.setattr(convert_module, "build_document", drop_one)
     report = convert_module.convert(sample_step, tmp_path / "short.step")

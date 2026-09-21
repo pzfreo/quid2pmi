@@ -10,6 +10,7 @@ Each placed label becomes one XCAF dimension carrying two things:
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -20,6 +21,7 @@ from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge
 from OCP.gp import gp_Ax2, gp_Dir, gp_Pnt
 from OCP.Interface import Interface_Static
 from OCP.Message import Message, Message_Gravity
+from OCP.Quantity import Quantity_Color, Quantity_TOC_sRGB
 from OCP.STEPCAFControl import STEPCAFControl_Writer
 from OCP.TCollection import TCollection_ExtendedString, TCollection_HAsciiString
 from OCP.TDataStd import TDataStd_Name
@@ -37,7 +39,7 @@ from OCP.XCAFDimTolObjects import (
     XCAFDimTolObjects_DimensionType_Size_Radius,
     XCAFDimTolObjects_DimensionType_Size_Thickness,
 )
-from OCP.XCAFDoc import XCAFDoc_Dimension, XCAFDoc_DocumentTool
+from OCP.XCAFDoc import XCAFDoc_ColorType, XCAFDoc_Dimension, XCAFDoc_DocumentTool
 
 from .layout import LINE_PITCH, PlacedLabel
 from .model import (
@@ -48,6 +50,7 @@ from .model import (
     DIM_THICKNESS,
     Annotation,
 )
+from .palette import colour_for
 
 # Every annotation quid2pmi writes describes one feature, so it is attached to a
 # single shape label. AP242 location dimensions are measured *between* two shapes,
@@ -63,6 +66,10 @@ DIMENSION_TYPES: dict[str, Any] = {
 
 #: Used when a feature has no semantic value: a graphical annotation and nothing more.
 PRESENTATION_ONLY = XCAFDimTolObjects_DimensionType_DimensionPresentation
+
+#: Dimension kinds whose stored value is an angle. XCAF holds angles in radians and
+#: viewers convert for display, so a value in degrees is shown 57x too large.
+ANGULAR_DIMENSIONS = frozenset({DIM_ANGLE})
 
 _XCAF_FORMAT = TCollection_ExtendedString("MDTV-XCAF")
 
@@ -116,7 +123,9 @@ def _plane_normal(label: PlacedLabel) -> tuple[float, float, float]:
     )
 
 
-def _presentation(label: PlacedLabel, font: str, leaders: bool) -> TopoDS_Compound | None:
+def _presentation(
+    label: PlacedLabel, font: str, leaders: bool, text: bool = True
+) -> TopoDS_Compound | None:
     """The graphical annotation: text outlines plus the leader polyline.
 
     Returns ``None`` when nothing could be drawn. OCCT's AP242 writer crashes on a
@@ -127,7 +136,7 @@ def _presentation(label: PlacedLabel, font: str, leaders: bool) -> TopoDS_Compou
     compound = TopoDS_Compound()
     builder.MakeCompound(compound)
     count = 0
-    for edge in _text_edges(label, font):
+    for edge in _text_edges(label, font) if text else ():
         builder.Add(compound, edge)
         count += 1
     if leaders:
@@ -151,31 +160,44 @@ def build_document(
     name: str = "part",
     font: str = "Arial",
     leaders: bool = True,
-) -> tuple[TDocStd_Document, list[PlacedLabel]]:
+    colours: bool = True,
+    explain_names: bool = False,
+    draw_text: bool = False,
+) -> tuple[TDocStd_Document, list[PlacedLabel], int]:
     """Assemble an XCAF document containing ``shape`` and one dimension per label.
 
-    Returns the document and the labels actually written. A label whose text and
-    leader yield no drawable geometry is skipped, because OCCT's AP242 writer
-    crashes on a dimension with an empty presentation.
+    Returns the document, the labels actually written and the number of faces
+    coloured. A label whose text and leader yield no drawable geometry is skipped,
+    because OCCT's AP242 writer crashes on a dimension with an empty presentation.
     """
+    painted: set[int] = set()
+
+    def tree_name(annotation: Annotation) -> str:
+        """What a viewer shows in its model tree for this feature's faces."""
+        if explain_names and annotation.explanation:
+            return f"{annotation.family}: {annotation.label} - {annotation.explanation}"
+        return f"{annotation.family}: {annotation.label}"
+
     app = XCAFApp_Application.GetApplication_s()
     doc = TDocStd_Document(_XCAF_FORMAT)
     app.NewDocument(_XCAF_FORMAT, doc)
     shape_tool = XCAFDoc_DocumentTool.ShapeTool_s(doc.Main())
     dimtol_tool = XCAFDoc_DocumentTool.DimTolTool_s(doc.Main())
 
+    colour_tool = XCAFDoc_DocumentTool.ColorTool_s(doc.Main())
     shape_label = shape_tool.AddShape(shape, False)
     TDataStd_Name.Set_s(shape_label, TCollection_ExtendedString(name))
     subshapes: dict[int, Any] = {}
 
-    def attach_to(annotation: Annotation) -> Any:
-        """The label a dimension should reference: the feature's own faces if known.
+    def register(annotation: Annotation) -> Any:
+        """Add the feature's faces as named, coloured XCAF sub-shapes.
 
-        Attaching to the top-level shape would make every annotation address the
-        whole solid. Adding the feature's faces as XCAF sub-shapes makes the PMI
-        reference the geometry it actually describes, so selecting the annotation
-        in a viewer highlights that feature.
+        Returns the first sub-shape label, which the dimension then references so
+        that it addresses the geometry it describes rather than the whole solid.
+        The colour is what actually makes the recognition result visible: a viewer
+        renders face colour whether or not it renders annotation text.
         """
+        first: Any = None
         for face in annotation.faces:
             wrapped = getattr(face, "wrapped", None)
             if wrapped is None:
@@ -183,18 +205,28 @@ def build_document(
             key = wrapped.HashCode(0x7FFFFFFF) if hasattr(wrapped, "HashCode") else id(wrapped)
             existing = subshapes.get(key)
             if existing is not None:
-                return existing
+                first = first or existing
+                continue
             sub_label = shape_tool.AddSubShape(shape_label, wrapped)
-            if not sub_label.IsNull():
-                TDataStd_Name.Set_s(sub_label, TCollection_ExtendedString(annotation.label))
-                subshapes[key] = sub_label
-                return sub_label
-        return shape_label
+            if sub_label.IsNull():
+                continue
+            TDataStd_Name.Set_s(sub_label, TCollection_ExtendedString(tree_name(annotation)))
+            if colours:
+                red, green, blue = colour_for(annotation.family)
+                colour_tool.SetColor(
+                    sub_label,
+                    Quantity_Color(red, green, blue, Quantity_TOC_sRGB),
+                    XCAFDoc_ColorType.XCAFDoc_ColorSurf,
+                )
+                painted.add(key)
+            subshapes[key] = sub_label
+            first = first or sub_label
+        return first if first is not None else shape_label
 
     written: list[PlacedLabel] = []
     for label in labels:
         annotation = label.annotation
-        presentation = _presentation(label, font, leaders)
+        presentation = _presentation(label, font, leaders, text=draw_text)
         if presentation is None:
             continue
         written.append(label)
@@ -203,20 +235,27 @@ def build_document(
         value = annotation.value if kind is not None else None
         obj.SetType(kind if value is not None else PRESENTATION_ONLY)
         if value is not None:
+            if annotation.dimension in ANGULAR_DIMENSIONS:
+                value = math.radians(float(value))
             obj.SetValue(float(value))
         obj.SetPoint(_pnt(annotation.anchor))
         obj.SetPlane(gp_Ax2(_pnt(label.origin), _dir(_plane_normal(label)), _dir(label.x_dir)))
         obj.SetPointTextAttach(_pnt(label.origin))
-        obj.SetSemanticName(TCollection_HAsciiString(annotation.label))
+        # OCCT writes the semantic name into STEP's SHAPE_ASPECT but drops its
+        # first whitespace-separated token, so a bare label loses a word --
+        # "HOLE D8 THRU" arrives as "D8 THRU". Leading with the family name makes
+        # that token the sacrificial one. Longer text does not survive here, so
+        # the explanation is not attempted: it goes to the JSON report instead.
+        obj.SetSemanticName(TCollection_HAsciiString(f"{annotation.family} {annotation.label}"))
         obj.SetPresentation(presentation, TCollection_HAsciiString(annotation.label))
 
         dim_label = dimtol_tool.AddDimension()
         TDataStd_Name.Set_s(dim_label, TCollection_ExtendedString(annotation.label))
         dimension = XCAFDoc_Dimension.Set_s(dim_label)
         dimension.SetObject(obj)
-        dimtol_tool.SetDimension(attach_to(annotation), dim_label)
+        dimtol_tool.SetDimension(register(annotation), dim_label)
 
-    return doc, written
+    return doc, written, len(painted)
 
 
 @contextmanager

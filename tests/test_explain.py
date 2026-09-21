@@ -104,7 +104,8 @@ def test_annotation_without_explanation_is_unchanged():
     assert annotation.explained() is annotation
 
 
-def test_explain_draws_more_geometry_but_keeps_the_same_names(sample_step, tmp_path):
+def test_explain_costs_nothing_unless_text_is_drawn(sample_step, tmp_path):
+    """Explanations ride in the model-tree names, which are free."""
     plain = convert(sample_step, tmp_path / "plain.step")
     verbose = convert(sample_step, tmp_path / "verbose.step", explain=True)
 
@@ -112,7 +113,38 @@ def test_explain_draws_more_geometry_but_keeps_the_same_names(sample_step, tmp_p
     verbose_pmi = {name: edges for _, _, edges, name in read_pmi(verbose.output)}
 
     assert set(plain_pmi) == set(verbose_pmi)
-    assert all(verbose_pmi[name] > plain_pmi[name] for name in plain_pmi)
+    assert plain_pmi == verbose_pmi
+    assert verbose.output.stat().st_size < plain.output.stat().st_size * 1.1
+
+
+def test_labels_reach_the_file_without_losing_a_word(sample_step, tmp_path):
+    """OCCT drops the semantic name's first token, so the family leads it."""
+    report = convert(sample_step, tmp_path / "named.step")
+    written = report.output.read_text(errors="ignore")
+    for annotation in report.annotations:
+        ascii_label = annotation.label.encode("ascii", "ignore").decode()
+        head = ascii_label.split()[0]
+        assert head, annotation.label
+        assert f"SHAPE_ASPECT('{head}" in written, annotation.label
+
+
+def test_explanations_live_in_the_json_report_not_the_step(sample_step, tmp_path):
+    """CAD Assistant shows neither annotation text nor sub-shape names, so the
+    prose belongs in the sidecar rather than pretending to be in the model."""
+    report = convert(sample_step, tmp_path / "e.step", explain=True)
+    payload = report.to_dict()
+    assert all(label["explanation"] for label in payload["labels"])
+
+
+def test_draw_text_adds_geometry_and_keeps_the_same_names(sample_step, tmp_path):
+    plain = convert(sample_step, tmp_path / "plain.step")
+    drawn = convert(sample_step, tmp_path / "drawn.step", explain=True, draw_text=True)
+
+    plain_pmi = {name: edges for _, _, edges, name in read_pmi(plain.output)}
+    drawn_pmi = {name: edges for _, _, edges, name in read_pmi(drawn.output)}
+
+    assert set(plain_pmi) == set(drawn_pmi)
+    assert all(drawn_pmi[name] > plain_pmi[name] for name in plain_pmi)
 
 
 def test_explanation_is_reported_whether_or_not_it_is_drawn(sample_step, tmp_path):

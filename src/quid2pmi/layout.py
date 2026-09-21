@@ -23,6 +23,9 @@ STANDOFF_FRACTION = 0.10
 GLYPH_WIDTH = 0.62
 #: Gap between neighbouring grid cells, as a fraction of text height.
 CELL_GAP = 0.8
+#: The label block on one bounding box face may grow to this multiple of that
+#: face, before the text is scaled down to keep the labels beside the part.
+FIT_MARGIN = 1.8
 
 
 @dataclass(frozen=True)
@@ -126,6 +129,37 @@ def _assign_cells(
     return placed
 
 
+def _grid_shape(count: int) -> tuple[int, int]:
+    """Columns and rows a grid of ``count`` cells spans."""
+    columns = max(1, math.isqrt(count - 1) + 1 if count > 1 else 1)
+    rows = -(-count // columns)
+    return columns, rows
+
+
+def _fitted_height(groups: dict[Vec, list[Annotation]], box: BoundingBox, base: float) -> float:
+    """Shrink the text until each face's block of labels sits beside the part.
+
+    Label blocks scale linearly with text height, so a single ratio suffices. Long
+    text is what makes this necessary: a wrapped explanation at the default height
+    is a block wider than a small part, and sixty of them would spread far enough
+    that the labels are a speck at any zoom that fits them all.
+    """
+    height = base
+    for normal, members in groups.items():
+        x_dir, y_dir = _plane_axes(normal)
+        widest = max(max(len(line) for line in a.text) for a in members)
+        tallest = max(len(a.text) for a in members)
+        columns, rows = _grid_shape(len(members))
+        span_u = columns * (widest * GLYPH_WIDTH + CELL_GAP) * base
+        span_v = rows * (tallest * LINE_PITCH + CELL_GAP) * base
+        allowed_u = max(2.0 * box.extent_along(x_dir), box.diagonal * 0.5) * FIT_MARGIN
+        allowed_v = max(2.0 * box.extent_along(y_dir), box.diagonal * 0.5) * FIT_MARGIN
+        for span, allowed in ((span_u, allowed_u), (span_v, allowed_v)):
+            if span > allowed:
+                height = min(height, base * allowed / span)
+    return max(height, base * 0.05)
+
+
 def layout(
     annotations: list[Annotation],
     box: BoundingBox,
@@ -136,12 +170,16 @@ def layout(
     if not annotations:
         return []
     diagonal = box.diagonal or 1.0
-    height = text_height if text_height else max(diagonal / 45.0, 1e-3)
     clearance = standoff if standoff is not None else diagonal * STANDOFF_FRACTION
 
     groups: dict[Vec, list[Annotation]] = {}
     for annotation in annotations:
         groups.setdefault(_direction_for(annotation, box), []).append(annotation)
+
+    if text_height:
+        height = text_height
+    else:
+        height = _fitted_height(groups, box, max(diagonal / 45.0, 1e-3))
 
     placed: list[PlacedLabel] = []
     for normal, members in groups.items():

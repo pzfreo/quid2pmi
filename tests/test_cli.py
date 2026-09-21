@@ -50,17 +50,18 @@ def test_without_quiet_the_summary_is_printed(sample_step, tmp_path, capfd):
     assert "annotations" in capfd.readouterr().err
 
 
-def test_cli_explain_flag_draws_explanations(sample_step, tmp_path):
+def test_cli_draw_text_flag_adds_label_geometry(sample_step, tmp_path):
     from tests.test_convert import read_pmi
 
     plain = tmp_path / "plain.step"
-    verbose = tmp_path / "verbose.step"
+    drawn = tmp_path / "drawn.step"
     assert main([str(sample_step), "-o", str(plain), "-q"]) == 0
-    assert main([str(sample_step), "-o", str(verbose), "-q", "--explain"]) == 0
+    assert main([str(sample_step), "-o", str(drawn), "-q", "--explain", "--draw-text"]) == 0
 
     plain_edges = sum(edges for _, _, edges, _ in read_pmi(plain))
-    verbose_edges = sum(edges for _, _, edges, _ in read_pmi(verbose))
-    assert verbose_edges > plain_edges
+    drawn_edges = sum(edges for _, _, edges, _ in read_pmi(drawn))
+    assert drawn_edges > plain_edges
+    assert plain.stat().st_size < drawn.stat().st_size
 
 
 def test_cli_explain_width_is_honoured(sample_step, tmp_path):

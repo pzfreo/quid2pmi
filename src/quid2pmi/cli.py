@@ -59,7 +59,8 @@ def build_parser() -> argparse.ArgumentParser:
         "-e",
         "--explain",
         action="store_true",
-        help="draw a plain-words explanation under each label as well as the terse code",
+        help="describe each feature in plain words, in its model-tree name "
+        "(and in the drawn label when --draw-text is on)",
     )
     parser.add_argument(
         "--explain-width",
@@ -67,6 +68,20 @@ def build_parser() -> argparse.ArgumentParser:
         default=44,
         metavar="CHARS",
         help="wrap explanation text at this many characters (default: 44)",
+    )
+    parser.add_argument(
+        "--no-colour",
+        "--no-color",
+        dest="no_colour",
+        action="store_true",
+        help="do not colour each feature's faces by family",
+    )
+    parser.add_argument(
+        "--draw-text",
+        action="store_true",
+        help="also draw label text as annotation geometry. CAD Assistant does not "
+        "render it -- OCCT writes no AP242 saved view -- and it dominates file size, "
+        "so it is off by default and only useful for viewers that do",
     )
     parser.add_argument("--json", type=Path, help="also write the annotation list as JSON")
     parser.add_argument("-q", "--quiet", action="store_true", help="only report errors")
@@ -99,6 +114,8 @@ def main(argv: list[str] | None = None) -> int:
             leaders=not args.no_leaders,
             explain=args.explain,
             explain_width=args.explain_width,
+            colours=not args.no_colour,
+            draw_text=args.draw_text,
             quiet=args.quiet,
         )
     except Exception as exc:
@@ -109,7 +126,10 @@ def main(argv: list[str] | None = None) -> int:
         args.json.write_text(json.dumps(report.to_dict(), indent=2))
 
     if not args.quiet:
-        print(f"{report.output}: {report.total} annotations", file=sys.stderr)
+        print(
+            f"{report.output}: {report.total} annotations, {report.coloured} faces coloured",
+            file=sys.stderr,
+        )
         for family, count in sorted(report.counts.items()):
             print(f"  {family:24s} {count}", file=sys.stderr)
         for family, count in sorted(report.unplaced.items()):

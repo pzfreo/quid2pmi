@@ -33,6 +33,8 @@ class ConversionReport:
     obstructed: int
     #: Annotations attached to the feature's own faces rather than the whole part.
     attached: int
+    #: Faces coloured by their feature family.
+    coloured: int
     annotations: tuple[Annotation, ...]
 
     @property
@@ -49,6 +51,7 @@ class ConversionReport:
             "undrawn": dict(sorted(self.undrawn.items())),
             "obstructed": self.obstructed,
             "attached": self.attached,
+            "coloured": self.coloured,
             "labels": [
                 {
                     "family": a.family,
@@ -110,6 +113,8 @@ def convert(
     leaders: bool = True,
     explain: bool = False,
     explain_width: int = 44,
+    colours: bool = True,
+    draw_text: bool = False,
     quiet: bool = False,
 ) -> ConversionReport:
     """Recognise features in ``source`` and write ``output`` with them as PMI.
@@ -118,10 +123,13 @@ def convert(
     the coordinate system of the incoming STEP file and lands on the geometry the
     output carries.
 
-    With ``explain`` set, each label also carries the feature described in plain
-    words, wrapped to ``explain_width`` characters. The explanation is always
-    present on the returned annotations and in the JSON report, whether or not it
-    is drawn.
+    With ``colours`` set, each feature's faces are named and coloured by family.
+    That is what makes recognition visible in a viewer: CAD Assistant renders face
+    colour and the model tree, but not the graphical annotation text OCCT writes.
+
+    With ``explain`` set, the plain-words description goes into those names, and
+    into the drawn label when ``draw_text`` is also set. The explanation is always
+    present on the returned annotations and in the JSON report either way.
     """
     part = import_step_geometry(str(source))
     selected = families if families is not None else set(FEATURE_FAMILIES)
@@ -152,12 +160,20 @@ def convert(
         sighted.append(replace(annotation, normal=direction))
     annotations = sighted
 
-    drawn = [a.explained(explain_width) for a in annotations] if explain else annotations
+    draw_explanation = explain and draw_text
+    drawn = [a.explained(explain_width) for a in annotations] if draw_explanation else annotations
     source_of = {id(d): a for d, a in zip(drawn, annotations, strict=True)}
 
     placed = layout(drawn, box, text_height=text_height, standoff=standoff)
-    doc, written = build_document(
-        part.wrapped, placed, name=source.stem, font=font, leaders=leaders
+    doc, written, coloured = build_document(
+        part.wrapped,
+        placed,
+        name=source.stem,
+        font=font,
+        leaders=leaders,
+        colours=colours,
+        explain_names=explain,
+        draw_text=draw_text,
     )
     write_step(doc, str(output), quiet=quiet)
 
@@ -174,4 +190,6 @@ def convert(
     }
 
     attached = sum(1 for a in kept if a.faces)
-    return ConversionReport(source, output, counts, unplaced, undrawn, obstructed, attached, kept)
+    return ConversionReport(
+        source, output, counts, unplaced, undrawn, obstructed, attached, coloured, kept
+    )

@@ -213,7 +213,10 @@ def _chamfer(d: dict[str, Any]) -> Annotation | None:
         f"{axis_phrase(d.get('axis'))}, legs {num(d.get('leg1'))} and {num(d.get('leg2'))} "
         f"at {num(d.get('angle'), 1)} degrees."
     )
-    return Annotation("chamfers", text, at, None, d.get("angle"), DIM_ANGLE, prose)
+    # The leg, not the angle, is the value carried semantically. An angular size
+    # renders as a swept arc with an .EQUAL. qualifier, and a part with many
+    # chamfers becomes unreadable; the angle stays in the label and explanation.
+    return Annotation("chamfers", text, at, None, d.get("leg1"), DIM_THICKNESS, prose)
 
 
 def _fillet(d: dict[str, Any]) -> Annotation | None:
