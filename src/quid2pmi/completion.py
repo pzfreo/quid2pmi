@@ -29,6 +29,19 @@ def _help_of(action: argparse.Action) -> str:
     return " ".join(text.split())[:70]
 
 
+def _describe(action: argparse.Action) -> str:
+    """A one-line description safe to put inside a zsh ``[...]`` spec.
+
+    Brackets end the description, and a parenthesis left unclosed by truncation
+    makes zsh read the rest of the spec as a glob qualifier, so both are removed
+    rather than escaped.
+    """
+    text = _help_of(action)
+    for char in "[]()":
+        text = text.replace(char, "")
+    return text.replace("\\", "").replace("'", "'\"'\"'")
+
+
 def generate(parser: argparse.ArgumentParser, shell: str, families: list[str]) -> str:
     """The completion script for ``shell``, or raise for an unknown shell."""
     if shell not in SHELLS:
@@ -71,24 +84,24 @@ complete -F _quid2pmi quid2pmi
 def _zsh(parser: argparse.ArgumentParser, families: list[str]) -> str:
     lines = []
     for action in _flags(parser):
-        spec = (
-            "{" + ",".join(action.option_strings) + "}"
-            if len(action.option_strings) > 1
-            else action.option_strings[0]
-        )
-        described = f"[{_help_of(action)}]"
+        options = action.option_strings
+        # The whole spec after the option name must be one quoted word: an
+        # unquoted (a b c) action is read by zsh as a glob qualifier.
         if action.choices:
-            values = " ".join(_choices_for(action))
-            lines.append(f"    {spec}{shlex.quote(described)}:value:({values})")
-        elif set(action.option_strings) & _PATH_OPTIONS:
-            lines.append(f"    {spec}{shlex.quote(described)}:file:_files")
+            tail = f":value:({' '.join(_choices_for(action))})"
+        elif set(options) & _PATH_OPTIONS:
+            tail = ":file:_files"
         elif action.nargs == 0:
-            lines.append(f"    {spec}{shlex.quote(described)}")
-        elif any(o in ("-f", "--families") for o in action.option_strings):
-            values = " ".join([*families, "all", "features", "summary"])
-            lines.append(f"    {spec}{shlex.quote(described)}:family:({values})")
+            tail = ""
+        elif any(o in ("-f", "--families") for o in options):
+            tail = f":family:({' '.join([*families, 'all', 'features', 'summary'])})"
         else:
-            lines.append(f"    {spec}{shlex.quote(described)}:value:")
+            tail = ":value:"
+        body = f"[{_describe(action)}]{tail}"
+        if len(options) > 1:
+            lines.append(f"    {{{','.join(options)}}}'{body}'")
+        else:
+            lines.append(f"    '{options[0]}{body}'")
     body = " \\\n".join(lines)
     return f"""#compdef quid2pmi
 # quid2pmi zsh completion. Install with:
