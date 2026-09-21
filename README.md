@@ -35,6 +35,7 @@ it beside this repo and skip if it is absent; set `QUIDDITY_CORPUS` to point els
 ## Use
 
 ```bash
+quid2pmi part.step                       # progress, then a summary per family
 quid2pmi part.step                       # writes part-pmi.step beside the input
 quid2pmi part.step -o annotated.step
 quid2pmi part.step --families holes,slots
@@ -44,18 +45,42 @@ quid2pmi part.step --json features.json  # full inventory, with explanations
 quid2pmi part.step --no-colour           # PMI dimensions only
 ```
 
-The command prints a per-family count of what it annotated to stderr:
+While it works it shows the phase it is in — reading, recognising, choosing leader directions,
+placing labels, writing — and then a summary in which each family is swatched in **the colour
+its faces are given in the STEP file**, so the terminal and the viewer agree:
 
 ```
-part-pmi.step: 14 annotations
-  holes                    2
-  section_recesses         4
-  step_levels              3
-  ...
+    feature       found
+  ■■ holes            31
+  ■■ chamfers         16
+  ■■ step levels       5
+  ■■ bosses            3
+  ■■ turned steps      3
+  ■■ fillets           2
+
+  60 annotations  58 faces coloured  409.5 kB  [cad-assistant]
+  /path/to/part-pmi.step
 ```
 
 The count is what actually reached the file. Records that carried no point to anchor a label
-to, and labels that produced nothing drawable, are listed separately rather than counted in.
+to, and labels that produced nothing drawable, are listed separately in yellow rather than
+counted in.
+
+Piped or redirected, the spinner and colour are dropped and the summary becomes one plain line
+per family, so build logs stay readable. `--plain` forces that in a terminal too, and `-v`
+lets the STEP writer's own output through.
+
+### Shell completion
+
+```bash
+quid2pmi --completion zsh  > "${fpath[1]}/_quid2pmi"
+quid2pmi --completion bash > /usr/local/etc/bash_completion.d/quid2pmi
+quid2pmi --completion fish > ~/.config/fish/completions/quid2pmi.fish
+```
+
+Completes options, family names, profiles and `.step` paths. The scripts are generated from
+the argument parser, so a new flag becomes completable as soon as it is added rather than when
+someone remembers to update a checked-in script.
 
 ### What is visible where
 
@@ -149,6 +174,10 @@ directly.
 | `--draw-text` | add the label text to the model as geometry (see size cost below) |
 | `--json` | also write the annotation list as JSON |
 | `-q, --quiet` | suppress the summary |
+| `-v, --verbose` | also show the STEP writer's own progress output |
+| `--plain` | plain terminal output, without colour or a spinner |
+| `--completion SHELL` | print a completion script for bash, zsh or fish |
+| `--version` | print the version |
 
 ## Where a leader points
 

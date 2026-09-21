@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -121,6 +121,7 @@ def convert(
     draw_text: bool = False,
     profile: ViewerProfile = DEFAULT_PROFILE,
     quiet: bool = False,
+    progress: Callable[[str], None] | None = None,
 ) -> ConversionReport:
     """Recognise features in ``source`` and write ``output`` with them as PMI.
 
@@ -136,8 +137,13 @@ def convert(
     into the drawn label when ``draw_text`` is also set. The explanation is always
     present on the returned annotations and in the JSON report either way.
     """
+    say = progress if progress is not None else lambda _: None
+
+    say("reading STEP")
     part = import_step_geometry(str(source))
     selected = families if families is not None else set(FEATURE_FAMILIES)
+
+    say("recognising features")
 
     # Prefer the evidence view: it anchors each label on the feature's own proven
     # faces. Families it does not publish -- the pattern summaries -- fall back to
@@ -151,6 +157,7 @@ def convert(
         for family, count in extra_unplaced.items():
             unplaced[family] = unplaced.get(family, 0) + count
 
+    say("choosing leader directions")
     box = _bounding_box(part)
     tester = SightTester(part.wrapped, box.diagonal * 4.0)
     obstructed = 0
@@ -169,7 +176,10 @@ def convert(
     drawn = [a.explained(explain_width) for a in annotations] if draw_explanation else annotations
     source_of = {id(d): a for d, a in zip(drawn, annotations, strict=True)}
 
+    say("placing labels")
     placed = layout(drawn, box, text_height=text_height, standoff=standoff)
+
+    say("building annotations")
     doc, written, coloured = build_document(
         part.wrapped,
         placed,
@@ -181,6 +191,7 @@ def convert(
         draw_text=draw_text,
         profile=profile,
     )
+    say("writing STEP")
     write_step(doc, str(output), quiet=quiet)
 
     # Report the annotations that reached the file, not the ones we hoped to write.

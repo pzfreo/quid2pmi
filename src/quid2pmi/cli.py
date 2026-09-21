@@ -7,9 +7,12 @@ import json
 import sys
 from pathlib import Path
 
+from . import __version__
 from .adapters import FEATURE_FAMILIES, SUMMARY_FAMILIES
+from .completion import SHELLS, generate
 from .convert import convert, resolve_families
 from .profiles import PROFILES, resolve_profile
+from .status import Reporter
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -27,7 +30,9 @@ def build_parser() -> argparse.ArgumentParser:
             + "\n  ".join(SUMMARY_FAMILIES)
         ),
     )
-    parser.add_argument("source", type=Path, help="input STEP file")
+    # Optional so that --completion and --version work on their own; its absence
+    # is reported below rather than by argparse.
+    parser.add_argument("source", type=Path, nargs="?", help="input STEP file")
     parser.add_argument(
         "-o",
         "--output",
@@ -93,14 +98,44 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--json", type=Path, help="also write the annotation list as JSON")
     parser.add_argument("-q", "--quiet", action="store_true", help="only report errors")
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="also show the STEP writer's own progress output",
+    )
+    parser.add_argument(
+        "--plain",
+        action="store_true",
+        help="plain terminal output, without colour or a spinner",
+    )
+    parser.add_argument(
+        "--completion",
+        choices=SHELLS,
+        metavar="SHELL",
+        help=f"print a shell completion script ({', '.join(SHELLS)}) and exit",
+    )
+    parser.add_argument("--version", action="version", version=f"quid2pmi {__version__}")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    if args.completion:
+        print(generate(parser, args.completion, list(FEATURE_FAMILIES)))
+        return 0
+
+    reporter = Reporter(quiet=args.quiet, colour=not args.plain)
+
+    if args.source is None:
+        parser.print_usage(sys.stderr)
+        reporter.failure("an input STEP file is required")
+        return 2
 
     if not args.source.is_file():
-        print(f"quid2pmi: no such file: {args.source}", file=sys.stderr)
+        reporter.failure(f"no such file: {args.source}")
         return 2
 
     output = args.output or args.source.with_name(f"{args.source.stem}-pmi.step")
@@ -108,47 +143,48 @@ def main(argv: list[str] | None = None) -> int:
     try:
         families = resolve_families(args.families)
     except ValueError as exc:
-        print(f"quid2pmi: {exc}", file=sys.stderr)
+        reporter.failure(str(exc))
         return 2
 
     try:
         viewer = resolve_profile(args.profile)
     except ValueError as exc:
-        print(f"quid2pmi: {exc}", file=sys.stderr)
+        reporter.failure(str(exc))
         return 2
 
+    stage: dict[str, object] = {}
+
+    def phase(description: str) -> None:
+        """Swap the spinner's caption as the conversion moves on."""
+        status = stage.get("status")
+        if status is not None:
+            status.update(f"[dim]{description}[/dim]")  # type: ignore[attr-defined]
+
     try:
-        report = convert(
-            args.source,
-            output,
-            families=families,
-            text_height=args.text_height,
-            standoff=args.standoff,
-            font=args.font,
-            leaders=not args.no_leaders,
-            explain=args.explain,
-            explain_width=args.explain_width,
-            colours=not args.no_colour,
-            draw_text=args.draw_text,
-            profile=viewer,
-            quiet=args.quiet,
-        )
+        with reporter.running() as status:
+            stage["status"] = status
+            report = convert(
+                args.source,
+                output,
+                families=families,
+                text_height=args.text_height,
+                standoff=args.standoff,
+                font=args.font,
+                leaders=not args.no_leaders,
+                explain=args.explain,
+                explain_width=args.explain_width,
+                colours=not args.no_colour,
+                draw_text=args.draw_text,
+                profile=viewer,
+                quiet=not args.verbose,
+                progress=phase,
+            )
     except Exception as exc:
-        print(f"quid2pmi: {exc}", file=sys.stderr)
+        reporter.failure(str(exc))
         return 1
 
     if args.json:
         args.json.write_text(json.dumps(report.to_dict(), indent=2))
 
-    if not args.quiet:
-        print(
-            f"{report.output}: {report.total} annotations, {report.coloured} faces coloured",
-            file=sys.stderr,
-        )
-        for family, count in sorted(report.counts.items()):
-            print(f"  {family:24s} {count}", file=sys.stderr)
-        for family, count in sorted(report.unplaced.items()):
-            print(f"  {family:24s} {count} record(s) with no anchor point", file=sys.stderr)
-        for family, count in sorted(report.undrawn.items()):
-            print(f"  {family:24s} {count} label(s) with nothing drawable", file=sys.stderr)
+    reporter.summary(report)
     return 0
