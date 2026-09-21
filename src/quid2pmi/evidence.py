@@ -16,7 +16,7 @@ from typing import Any
 from quiddity.evidence import build_recognition_evidence
 from quiddity.inspection import inspect_face
 
-from .adapters import ADAPTERS, generic_annotation
+from .adapters import ADAPTERS, generic_annotation, singular
 from .geometry import normalise
 from .model import Annotation, Vec
 
@@ -93,7 +93,7 @@ def annotate_from_evidence(
                 unplaced[family] = unplaced.get(family, 0) + 1
                 continue
             made = generic_annotation(family, payload) or Annotation(
-                family, (family.rstrip("s").replace("_", " ").upper(),), anchor
+                family, (singular(family).upper(),), anchor
             )
         if anchor is not None:
             made = replace(

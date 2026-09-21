@@ -89,3 +89,11 @@ def test_cli_ap242_profile_writes_thickness(sample_step, tmp_path):
     out = tmp_path / "strict.step"
     assert main([str(sample_step), "-o", str(out), "-q", "--profile", "ap242"]) == 0
     assert out.is_file()
+
+
+def test_cli_viewer_flag_writes_a_page(sample_step, tmp_path):
+    page = tmp_path / "v.html"
+    assert (
+        main([str(sample_step), "-o", str(tmp_path / "o.step"), "-q", "--viewer", str(page)]) == 0
+    )
+    assert page.is_file() and page.stat().st_size > 10_000

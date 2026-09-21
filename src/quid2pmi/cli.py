@@ -103,6 +103,14 @@ def build_parser() -> argparse.ArgumentParser:
         "render it -- OCCT writes no AP242 saved view -- and it dominates file size, "
         "so it is off by default and only useful for viewers that do",
     )
+    parser.add_argument(
+        "--viewer",
+        type=Path,
+        metavar="HTML",
+        help="also write a self-contained web page showing the features, via "
+        "step-pmi-viewer; labels there are text rather than geometry, so they "
+        "stay legible without the file size --draw-text costs",
+    )
     parser.add_argument("--json", type=Path, help="also write the annotation list as JSON")
     parser.add_argument("-q", "--quiet", action="store_true", help="only report errors")
     parser.add_argument(
@@ -184,6 +192,7 @@ def main(argv: list[str] | None = None) -> int:
                 draw_text=args.draw_text,
                 profile=viewer,
                 text_in=args.text_in,
+                viewer=args.viewer,
                 quiet=not args.verbose,
                 progress=phase,
             )

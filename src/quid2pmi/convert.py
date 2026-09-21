@@ -121,6 +121,7 @@ def convert(
     draw_text: bool = False,
     profile: ViewerProfile = DEFAULT_PROFILE,
     text_in: str | None = None,
+    viewer: Path | None = None,
     quiet: bool = False,
     progress: Callable[[str], None] | None = None,
 ) -> ConversionReport:
@@ -213,6 +214,15 @@ def convert(
     }
 
     attached = sum(1 for a in kept if a.faces)
+    if viewer is not None:
+        # The same document, drawn as a web page. Annotation text is HTML there
+        # rather than geometry, so it stays legible at any zoom without the file
+        # size that --draw-text costs in the STEP output.
+        from .viewer import write_viewer
+
+        say("writing viewer")
+        write_viewer(viewer, source.stem, doc, list(kept), box)
+
     return ConversionReport(
         source,
         output,

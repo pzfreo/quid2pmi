@@ -41,6 +41,7 @@ quid2pmi part.step -o annotated.step
 quid2pmi part.step --families holes,slots
 quid2pmi part.step --families all --json features.json
 quid2pmi part.step --text-height 2.5 --standoff 15
+quid2pmi part.step --viewer features.html # a web page showing the features
 quid2pmi part.step --json features.json  # full inventory, with explanations
 quid2pmi part.step --no-colour           # PMI dimensions only
 ```
@@ -69,6 +70,24 @@ counted in.
 Piped or redirected, the spinner and colour are dropped and the summary becomes one plain line
 per family, so build logs stay readable. `--plain` forces that in a terminal too, and `-v`
 lets the STEP writer's own output through.
+
+### Viewing in a browser instead
+
+`--viewer` writes a self-contained web page through
+[step-pmi-viewer](https://github.com/pzfreo/step-pmi-viewer): the part in its feature colours,
+with every label as HTML text rather than geometry. That keeps labels crisp at any zoom and
+costs almost nothing -- a 65-feature part is under 400 kB, against 11 MB for the same labels
+drawn into the STEP file with `--draw-text`.
+
+It also sidesteps the viewer limits documented above: the page draws what it is given, so there
+is no question of saved views or which annotation forms a viewer honours.
+
+```bash
+quid2pmi part.step --viewer features.html && open features.html
+```
+
+The same package reads *authored* PMI out of an AP242 file, so the features quid2pmi recovers
+and the dimensions and tolerances an engineer wrote can be looked at the same way.
 
 ### Shell completion
 
@@ -188,6 +207,7 @@ directly.
 | `-q, --quiet` | suppress the summary |
 | `-v, --verbose` | also show the STEP writer's own progress output |
 | `--plain` | plain terminal output, without colour or a spinner |
+| `--viewer HTML` | also write a self-contained web page showing the features |
 | `--completion SHELL` | print a completion script for bash, zsh or fish |
 | `--version` | print the version |
 

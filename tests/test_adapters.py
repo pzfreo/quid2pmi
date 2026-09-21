@@ -152,3 +152,53 @@ def test_generic_fallback_labels_an_unknown_family():
     assert annotation is not None
     assert annotation.anchor == (1.0, 2.0, 3.0)
     assert "WIDGET" in annotation.label
+
+
+def test_singular_handles_doubled_sibilants():
+    """Stripping a trailing 's' turns 'bosses' into 'bosse'."""
+    from quid2pmi.adapters import singular
+
+    assert singular("polygonal_bosses") == "polygonal boss"
+    assert singular("section_recesses") == "section recess"
+    assert singular("holes") == "hole"
+    assert singular("turned_steps") == "turned step"
+
+
+def test_blend_on_a_straight_edge_is_labelled():
+    """A blend's path is a circle or a straight edge; only handling the circle
+    left every straight-edge blend with a bare family name and no radius."""
+    result = FakeResult(
+        blends=[
+            Rec(
+                {
+                    "radius": 10.0,
+                    "side": "concave",
+                    "path": {"at": [-323.152, -115.0, -60.0], "direction": [1.0, 0.0, 0.0]},
+                }
+            )
+        ]
+    )
+    (annotation,), unplaced = annotate(result, {"blends"})
+    assert unplaced == {}
+    assert annotation.label.startswith("BLEND R10")
+    assert annotation.anchor == (-323.152, -115.0, -60.0)
+    assert annotation.value == 10.0
+    assert annotation.dimension == DIM_RADIUS
+    assert "radius 10" in annotation.explanation
+
+
+def test_blend_on_a_circle_still_anchors_on_the_circle():
+    result = FakeResult(
+        blends=[
+            Rec(
+                {
+                    "radius": 1.0,
+                    "side": "convex",
+                    "path": {"center": [0, 0, 1], "normal": [0, 0, 1], "radius": 48.0},
+                }
+            )
+        ]
+    )
+    (annotation,), _ = annotate(result, {"blends"})
+    assert round(sum(v * v for v in annotation.anchor[:2]) ** 0.5, 6) == 48.0
+    assert "circular path" in annotation.explanation

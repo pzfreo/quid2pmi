@@ -87,6 +87,18 @@ def direction_phrase(vector: Vec | None) -> str:
     return ""
 
 
+def singular(family: str) -> str:
+    """Singular form of a family name, for prose and generic labels.
+
+    Stripping a trailing "s" is not enough: it turns "bosses" into "bosse".
+    """
+    word = family.replace("_", " ")
+    for ending in ("sses", "ses", "xes", "ches", "shes"):
+        if word.endswith(ending):
+            return word[:-2]
+    return word[:-1] if word.endswith("s") else word
+
+
 def num(value: object, places: int = 3) -> str:
     """Format a length or angle for a drawing label, without trailing zeros."""
     try:
@@ -243,19 +255,30 @@ def _blend(d: dict[str, Any]) -> Annotation | None:
     radius = d.get("radius")
     if not isinstance(path, dict):
         return None
+
+    # A blend follows either a circle, given as centre/normal/radius, or a
+    # straight edge, given as a point and direction. Handling only the circular
+    # form leaves every blend along a straight edge unlabelled.
     centre = as_point(path.get("center"))
     normal = as_point(path.get("normal"))
     path_radius = path.get("radius")
-    if centre is None or normal is None or path_radius is None:
-        return None
-    anchor, radial = _radial_anchor(centre, normal, float(path_radius))
+    anchor: Vec
+    facing: Vec | None
+    if centre is not None and normal is not None and path_radius is not None:
+        anchor, facing = _radial_anchor(centre, normal, float(path_radius))
+        along = f" following a circular path of radius {num(path_radius)}"
+    else:
+        straight = as_point(path.get("at"))
+        if straight is None:
+            return None
+        anchor, facing = straight, None
+        direction = as_point(path.get("direction"))
+        along = f" along {direction_phrase(direction)}" if direction_phrase(direction) else ""
+
     side = d.get("side")
     text = (f"BLEND R{num(radius)}", str(side).upper()) if side else (f"BLEND R{num(radius)}",)
-    prose = (
-        f"{str(side).capitalize() if side else 'Rolling'} blend of radius {num(radius)} "
-        f"following a circular path of radius {num(path_radius)}."
-    )
-    return Annotation("blends", text, anchor, radial, radius, DIM_RADIUS, prose)
+    prose = f"{str(side).capitalize() if side else 'Rolling'} blend of radius {num(radius)}{along}."
+    return Annotation("blends", text, anchor, facing, radius, DIM_RADIUS, prose)
 
 
 def _groove(d: dict[str, Any]) -> Annotation | None:
@@ -627,7 +650,7 @@ def generic_annotation(family: str, d: dict[str, Any]) -> Annotation | None:
         (k, v) for k, v in d.items() if isinstance(v, (int, float)) and not isinstance(v, bool)
     ]
     scalars = [f"{k.upper()} {num(v)}" for k, v in numeric][:2]
-    words = family.rstrip("s").replace("_", " ")
+    words = singular(family)
     text = (words.upper(), *scalars)
     prose = f"Recognised {words}"
     if numeric:
