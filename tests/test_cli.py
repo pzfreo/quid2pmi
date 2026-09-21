@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from quid2pmi.cli import main
 
 
@@ -50,38 +52,17 @@ def test_without_quiet_the_summary_is_printed(sample_step, tmp_path, capfd):
     assert "annotations" in capfd.readouterr().err
 
 
-def test_cli_draws_the_label_text_unless_told_not_to(sample_step, tmp_path):
-    drawn = tmp_path / "drawn.step"
-    bare = tmp_path / "bare.step"
-    assert main([str(sample_step), "-o", str(drawn), "-q"]) == 0
-    assert main([str(sample_step), "-o", str(bare), "-q", "--no-draw-text"]) == 0
-
-    # The text is what the size is made of, and it is in the PMI, not in a
-    # second shape bolted on beside the part.
-    assert bare.stat().st_size < drawn.stat().st_size
-    assert "quiddity labels" not in drawn.read_text(errors="ignore")
-
-
-def test_cli_explain_width_is_honoured(sample_step, tmp_path):
-    assert (
-        main(
-            [
-                str(sample_step),
-                "-o",
-                str(tmp_path / "o.step"),
-                "-q",
-                "-e",
-                "--explain-width",
-                "30",
-            ]
-        )
-        == 0
-    )
+def test_cli_has_no_drawn_text_options_left(sample_step, tmp_path):
+    """Drawing label text was CAD Assistant's workaround and is gone with it."""
+    out = tmp_path / "o.step"
+    assert main([str(sample_step), "-o", str(out), "-q"]) == 0
+    assert "quiddity labels" not in out.read_text(errors="ignore")
+    for gone in ("--draw-text", "--no-draw-text", "--text-in", "--font", "--explain-width"):
+        with pytest.raises(SystemExit):
+            main([str(sample_step), "-o", str(out), "-q", gone])
 
 
 def test_cli_rejects_an_unknown_profile(sample_step, capsys):
-    import pytest
-
     with pytest.raises(SystemExit):
         main([str(sample_step), "--profile", "nonesuch"])
 

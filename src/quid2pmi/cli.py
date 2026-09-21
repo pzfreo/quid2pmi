@@ -57,7 +57,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="distance from the part's bounding box to the label plane "
         "(default: 10%% of the bounding box diagonal)",
     )
-    parser.add_argument("--font", default="Arial", help="label font (default: Arial)")
     parser.add_argument(
         "--no-leaders", action="store_true", help="omit the leader line from label to feature"
     )
@@ -65,15 +64,8 @@ def build_parser() -> argparse.ArgumentParser:
         "-e",
         "--explain",
         action="store_true",
-        help="describe each feature in plain words, in its model-tree name "
-        "(and in the drawn label unless --no-draw-text)",
-    )
-    parser.add_argument(
-        "--explain-width",
-        type=int,
-        default=44,
-        metavar="CHARS",
-        help="wrap explanation text at this many characters (default: 44)",
+        help="describe each feature in plain words, in its model-tree name, "
+        "in --json and in --viewer",
     )
     parser.add_argument(
         "--no-colour",
@@ -88,14 +80,6 @@ def build_parser() -> argparse.ArgumentParser:
         default="cad-assistant",
         help="viewer to write for: "
         + "; ".join(f"{name} -- {p.summary}" for name, p in sorted(PROFILES.items())),
-    )
-    parser.add_argument(
-        "--no-draw-text",
-        dest="draw_text",
-        action="store_false",
-        help="write only the leader into each PMI presentation, not the label text. "
-        "The text is what the file size is made of, so this is much smaller -- at "
-        "the cost of annotations no viewer can read without the semantic values",
     )
     parser.add_argument(
         "--viewer",
@@ -178,12 +162,9 @@ def main(argv: list[str] | None = None) -> int:
                 families=families,
                 text_height=args.text_height,
                 standoff=args.standoff,
-                font=args.font,
                 leaders=not args.no_leaders,
                 explain=args.explain,
-                explain_width=args.explain_width,
                 colours=not args.no_colour,
-                draw_text=args.draw_text,
                 profile=viewer,
                 viewer=args.viewer,
                 quiet=not args.verbose,

@@ -2,8 +2,8 @@
 
 Each placed label becomes one XCAF dimension carrying two things:
 
-* a **graphical** presentation -- the label text and its leader line as edges,
-  which is what a viewer such as CAD Assistant draws in 3D; and
+* a **graphical** presentation -- the leader line, as the edges of a tessellated
+  annotation occurrence, the same form the NIST PMI reference files use; and
 * a **semantic** value and dimension type where the feature has one, so the
   annotation is also machine-readable rather than only a picture of text.
 """
@@ -15,7 +15,6 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
-from build123d import Compound, FontStyle, Location, Plane, Vector
 from OCP.BRep import BRep_Builder
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge
 from OCP.gp import gp_Ax2, gp_Dir, gp_Pnt
@@ -26,8 +25,6 @@ from OCP.STEPCAFControl import STEPCAFControl_Writer
 from OCP.TCollection import TCollection_ExtendedString, TCollection_HAsciiString
 from OCP.TDataStd import TDataStd_Name
 from OCP.TDocStd import TDocStd_Document
-from OCP.TopAbs import TopAbs_EDGE
-from OCP.TopExp import TopExp_Explorer
 from OCP.TopoDS import TopoDS_Compound, TopoDS_Shape
 from OCP.XCAFApp import XCAFApp_Application
 from OCP.XCAFDimTolObjects import (
@@ -41,7 +38,7 @@ from OCP.XCAFDimTolObjects import (
 )
 from OCP.XCAFDoc import XCAFDoc_ColorType, XCAFDoc_Dimension, XCAFDoc_DocumentTool
 
-from .layout import LINE_PITCH, PlacedLabel
+from .layout import PlacedLabel
 from .model import (
     DIM_ANGLE,
     DIM_DIAMETER,
@@ -105,45 +102,6 @@ def _dir(value: tuple[float, float, float]) -> gp_Dir:
     return gp_Dir(float(value[0]), float(value[1]), float(value[2]))
 
 
-def _text_shape(label: PlacedLabel, font: str) -> Compound | None:
-    """The label's text as filled glyph faces, lying in the label's plane."""
-    plane = Plane(
-        origin=Vector(*label.origin),
-        x_dir=Vector(*label.x_dir),
-        z_dir=Vector(*_plane_normal(label)),
-    )
-    rows: list[Compound] = []
-    for row, line in enumerate(label.annotation.text):
-        if not line.strip():
-            continue
-        try:
-            glyphs = Compound.make_text(line, label.height, font=font, font_style=FontStyle.REGULAR)
-        except Exception:  # pragma: no cover - font resolution differs per platform
-            glyphs = Compound.make_text(line, label.height)
-        # make_text centres on the origin; move it to a left-aligned row baseline.
-        bbox = glyphs.bounding_box()
-        placed = (
-            Location((-bbox.min.X, -bbox.max.Y - row * LINE_PITCH * label.height, 0.0)) * glyphs
-        )
-        rows.append(plane.location * placed)
-    if not rows:
-        return None
-    return Compound(children=rows)
-
-
-def _text_edges(label: PlacedLabel, font: str) -> list[TopoDS_Shape]:
-    """Glyph outlines of the label's text, as edges."""
-    shape = _text_shape(label, font)
-    if shape is None:
-        return []
-    edges: list[TopoDS_Shape] = []
-    explorer = TopExp_Explorer(shape.wrapped, TopAbs_EDGE)
-    while explorer.More():
-        edges.append(explorer.Current())
-        explorer.Next()
-    return edges
-
-
 def _plane_normal(label: PlacedLabel) -> tuple[float, float, float]:
     x, y = label.x_dir, label.y_dir
     return (
@@ -153,10 +111,13 @@ def _plane_normal(label: PlacedLabel) -> tuple[float, float, float]:
     )
 
 
-def _presentation(
-    label: PlacedLabel, font: str, leaders: bool, text: bool = True
-) -> TopoDS_Compound | None:
-    """The graphical annotation: text outlines plus the leader polyline.
+def _presentation(label: PlacedLabel, leaders: bool) -> TopoDS_Compound | None:
+    """The graphical annotation: the leader polyline.
+
+    The label text is deliberately not drawn here. Glyph outlines in the model
+    were a workaround for CAD Assistant, which renders no graphical PMI however
+    it is written; ``--viewer`` shows the text as HTML instead, legible at any
+    zoom and a tenth the size.
 
     Returns ``None`` when nothing could be drawn. OCCT's AP242 writer crashes on a
     dimension whose presentation holds no edges, so such a label is dropped rather
@@ -166,9 +127,6 @@ def _presentation(
     compound = TopoDS_Compound()
     builder.MakeCompound(compound)
     count = 0
-    for edge in _text_edges(label, font) if text else ():
-        builder.Add(compound, edge)
-        count += 1
     if leaders:
         points = label.leader
         for start, end in zip(points, points[1:], strict=False):
@@ -188,11 +146,9 @@ def build_document(
     labels: list[PlacedLabel],
     *,
     name: str = "part",
-    font: str = "Arial",
     leaders: bool = True,
     colours: bool = True,
     explain_names: bool = False,
-    draw_text: bool = True,
     profile: ViewerProfile = DEFAULT_PROFILE,
 ) -> tuple[TDocStd_Document, list[PlacedLabel], int]:
     """Assemble an XCAF document containing ``shape`` and one dimension per label.
@@ -257,7 +213,7 @@ def build_document(
     written: list[PlacedLabel] = []
     for label in labels:
         annotation = label.annotation
-        presentation = _presentation(label, font, leaders, text=draw_text)
+        presentation = _presentation(label, leaders)
         if presentation is None:
             continue
         written.append(label)

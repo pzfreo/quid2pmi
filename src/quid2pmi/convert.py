@@ -113,12 +113,9 @@ def convert(
     families: set[str] | None = None,
     text_height: float | None = None,
     standoff: float | None = None,
-    font: str = "Arial",
     leaders: bool = True,
     explain: bool = False,
-    explain_width: int = 44,
     colours: bool = True,
-    draw_text: bool = True,
     profile: ViewerProfile = DEFAULT_PROFILE,
     viewer: Path | None = None,
     quiet: bool = False,
@@ -134,9 +131,9 @@ def convert(
     That is what makes recognition visible in a viewer: CAD Assistant renders face
     colour and the model tree, but not the graphical annotation text OCCT writes.
 
-    With ``explain`` set, the plain-words description goes into those names, and
-    into the drawn label when ``draw_text`` is also set. The explanation is always
-    present on the returned annotations and in the JSON report either way.
+    With ``explain`` set, the plain-words description goes into those names. The
+    explanation is always present on the returned annotations and in the JSON
+    report either way, and ``--viewer`` shows it in full.
     """
     say = progress if progress is not None else lambda _: None
 
@@ -173,30 +170,24 @@ def convert(
         sighted.append(replace(annotation, normal=direction))
     annotations = sighted
 
-    draw_explanation = explain and draw_text
-    drawn = [a.explained(explain_width) for a in annotations] if draw_explanation else annotations
-    source_of = {id(d): a for d, a in zip(drawn, annotations, strict=True)}
-
     say("placing labels")
-    placed = layout(drawn, box, text_height=text_height, standoff=standoff)
+    placed = layout(annotations, box, text_height=text_height, standoff=standoff)
 
     say("building annotations")
     doc, written, coloured = build_document(
         part.wrapped,
         placed,
         name=source.stem,
-        font=font,
         leaders=leaders,
         colours=colours,
         explain_names=explain,
-        draw_text=draw_text,
         profile=profile,
     )
     say("writing STEP")
     write_step(doc, str(output), quiet=quiet)
 
     # Report the annotations that reached the file, not the ones we hoped to write.
-    kept = tuple(source_of[id(label.annotation)] for label in written)
+    kept = tuple(label.annotation for label in written)
     counts = _by_family(kept)
     attempted = _by_family(annotations)
     # Equal-valued annotations are not distinguishable by value, so the shortfall is

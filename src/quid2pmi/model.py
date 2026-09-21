@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import textwrap
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import Any
 
 Vec = tuple[float, float, float]
@@ -25,10 +24,9 @@ class Annotation:
     and is ``None`` when the record carries no usable direction -- the layout
     then derives one from the part's bounding box.
 
-    ``text`` is what gets drawn. ``explanation`` is the same feature in plain
-    words, which the caller can have drawn as well via :meth:`explained`.
-    ``label`` stays the terse identifier either way, so the name carried in the
-    STEP file and the model tree does not change when explanations are drawn.
+    ``text`` is the terse callout. ``explanation`` is the same feature in plain
+    words; it reaches the model-tree name, the JSON report and the viewer, never
+    the STEP file's own geometry. ``label`` stays the terse identifier either way.
     """
 
     family: str
@@ -54,12 +52,3 @@ class Annotation:
         """The terse identifier, independent of how much text is drawn."""
         return self.name or " ".join(self.text)
 
-    def explained(self, width: int = 44) -> Annotation:
-        """A copy whose drawn text also carries the explanation, wrapped to ``width``.
-
-        Returns the annotation unchanged when it has no explanation to add.
-        """
-        if not self.explanation:
-            return self
-        wrapped = textwrap.wrap(self.explanation, width=width) or [self.explanation]
-        return replace(self, text=(*self.text, "", *wrapped), name=self.label)

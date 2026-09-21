@@ -2,8 +2,6 @@
 
 import json
 
-import pytest
-
 from quid2pmi import convert
 from quid2pmi.adapters import annotate, generic_annotation
 from quid2pmi.model import Annotation
@@ -86,29 +84,11 @@ def test_generic_fallback_explains_what_it_can():
     assert annotation.explanation == "Recognised widget with span 3."
 
 
-def test_explained_wraps_and_appends_to_the_drawn_text():
-    annotation = Annotation("holes", ("HOLE",), (0.0, 0.0, 0.0), explanation="a " * 40)
-    explained = annotation.explained(width=20)
-    assert explained.text[0] == "HOLE"
-    assert len(explained.text) > 2
-    assert all(len(line) <= 20 for line in explained.text[2:])
-
-
-def test_explained_keeps_the_terse_label_as_the_identifier():
-    annotation = Annotation("holes", ("HOLE", "D6"), (0.0, 0.0, 0.0), explanation="A round hole.")
-    assert annotation.explained().label == "HOLE D6"
-
-
-def test_annotation_without_explanation_is_unchanged():
-    annotation = Annotation("holes", ("HOLE",), (0.0, 0.0, 0.0))
-    assert annotation.explained() is annotation
-
-
-def test_explain_costs_nothing_unless_text_is_drawn(sample_step, tmp_path):
-    """Explanations ride in the model-tree names, which are free. Only the drawn
-    label spells them out, so with --no-draw-text they cost nothing at all."""
-    plain = convert(sample_step, tmp_path / "plain.step", draw_text=False)
-    verbose = convert(sample_step, tmp_path / "verbose.step", explain=True, draw_text=False)
+def test_explain_costs_the_step_file_nothing(sample_step, tmp_path):
+    """Explanations ride in the model-tree names, which are free. Nothing is ever
+    drawn from them, so the annotations and the file size do not move."""
+    plain = convert(sample_step, tmp_path / "plain.step")
+    verbose = convert(sample_step, tmp_path / "verbose.step", explain=True)
 
     plain_pmi = {name: edges for _, _, edges, name in read_pmi(plain.output)}
     verbose_pmi = {name: edges for _, _, edges, name in read_pmi(verbose.output)}
@@ -137,20 +117,16 @@ def test_explanations_live_in_the_json_report_not_the_step(sample_step, tmp_path
     assert all(label["explanation"] for label in payload["labels"])
 
 
-def test_the_label_text_goes_into_the_pmi_presentation(sample_step, tmp_path):
-    """Where the NIST CTC files put it. The alternative -- a second shape of
-    glyph outlines beside the part -- was a workaround for CAD Assistant, which
-    draws no graphical PMI, and it is gone."""
-    bare = convert(sample_step, tmp_path / "bare.step", draw_text=False)
-    drawn = convert(sample_step, tmp_path / "drawn.step", explain=True)
+def test_no_label_text_is_drawn_into_the_model(sample_step, tmp_path):
+    """Glyph outlines -- as a second shape beside the part, or inside the PMI
+    presentation -- were a workaround for CAD Assistant, which draws no graphical
+    PMI either way. The presentation carries the leader and nothing else."""
+    report = convert(sample_step, tmp_path / "o.step", explain=True)
+    written = report.output.read_text(errors="ignore")
 
-    assert "quiddity labels" not in drawn.output.read_text(errors="ignore")
-
-    bare_pmi = {name: edges for _, _, edges, name in read_pmi(bare.output)}
-    drawn_pmi = {name: edges for _, _, edges, name in read_pmi(drawn.output)}
-    # Without the text a presentation is just the leader; with it, the glyphs.
-    assert all(edges < 20 for edges in bare_pmi.values())
-    assert all(drawn_pmi[name] > edges for name, edges in bare_pmi.items())
+    assert "quiddity labels" not in written
+    # A leader is an elbow and a stem: a handful of edges, not a glyph outline.
+    assert all(edges <= 4 for _, _, edges, _ in read_pmi(report.output))
 
 
 def test_explanation_is_reported_whether_or_not_it_is_drawn(sample_step, tmp_path):
@@ -159,12 +135,9 @@ def test_explanation_is_reported_whether_or_not_it_is_drawn(sample_step, tmp_pat
     assert all(label["explanation"] for label in payload["labels"])
 
 
-def test_narrower_wrapping_produces_more_lines():
-    annotation = Annotation("holes", ("HOLE",), (0.0, 0.0, 0.0), explanation="word " * 30)
-    assert len(annotation.explained(width=20).text) > len(annotation.explained(width=60).text)
-
-
-@pytest.mark.parametrize("width", [20, 44, 80])
-def test_explained_text_never_loses_the_terse_label(width):
+def test_the_explanation_never_displaces_the_terse_label():
+    """The label is the identifier in the STEP file and the model tree; the
+    explanation rides alongside it and never rewrites it."""
     annotation = Annotation("slots", ("SLOT", "D4"), (0.0, 0.0, 0.0), explanation="A slot. " * 10)
-    assert annotation.explained(width).text[:2] == ("SLOT", "D4")
+    assert annotation.label == "SLOT D4"
+    assert annotation.text == ("SLOT", "D4")
