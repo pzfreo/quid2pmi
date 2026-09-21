@@ -96,14 +96,22 @@ kinds of annotation and they do not all survive to the screen:
 | Label text as AP242 graphical PMI | yes | **no** (see below) |
 | Sub-shape names on faces | **no** — OCCT does not export them | no |
 
-**Why annotation text is written as geometry.** OCCT can put the label into the PMI
-presentation, and does write it: 60 `DRAUGHTING_CALLOUT` entities on a `DRAUGHTING_MODEL`. But
-it writes **no AP242 saved view** — zero `CAMERA_MODEL_D3` and `PRESENTATION_VIEW` entities,
-because `STEPCAFControl_Writer` has no view mode at all, only the *reader* has `SetViewMode`.
-Viewers drive graphical PMI display from saved views, so there is nothing to switch on: CAD
-Assistant draws none of it, and a part's worth of those callouts crashes its importer. The same
-outlines added as ordinary geometry, in a separate shape named `quiddity labels`, render
-everywhere. That is what `--draw-text` does.
+**Why annotation text is written as geometry.** OCCT does write the label into the PMI
+presentation: 60 `DRAUGHTING_CALLOUT` entities on a `DRAUGHTING_MODEL`, carried as
+`TESSELLATED_ANNOTATION_OCCURRENCE` — the same form the NIST PMI reference suite uses, and
+NIST's own STP2X3D renders them (see [`tools/stp2x3d`](tools/stp2x3d)). The annotations are
+sound.
+
+What is missing is the **AP242 saved view**: zero `CAMERA_MODEL_D3` and `PRESENTATION_VIEW`
+entities, because `STEPCAFControl_Writer` has no view mode at all — only the *reader* has
+`SetViewMode`. Against the NIST reference, that is the *only* structural difference. Viewers
+drive graphical PMI display from saved views, so CAD Assistant has nothing to switch on and
+draws none of it. The same outlines added as ordinary geometry, in a separate shape named
+`quiddity labels`, render everywhere, and that is what `--draw-text` does — at the cost of
+turning text into B-rep.
+
+If a saved view can be written, `--draw-text` should become unnecessary: the annotations are
+already in the file and cost nothing.
 
 ### Viewer profiles
 

@@ -4,31 +4,39 @@ NIST's [STEP to X3D translator](https://github.com/usnistgov/stp2x3d) built on D
 runs on macOS without fighting an OCCT build.
 
 ```bash
-docker build -t stp2x3d .
-docker run --rm -v "$PWD:/work" stp2x3d --input /work/part.step --html 1 --edge 1
+docker build -t stp2x3d tools/stp2x3d
+docker run --rm -v "$PWD:/work" stp2x3d --input /work/part.step --html 1 --gdt 1 --edge 1
 # writes part.html next to the input; open it in a browser
 ```
 
-## What it does and does not do
+**`--gdt 1` is the important flag.** It is off by default, and without it you get the part
+geometry only. With it you get the PMI annotations as well.
 
-It converts **part geometry** to X3D/X3DOM. It does **not** export PMI annotation graphics.
+## What it showed about quid2pmi's output
 
-That was measured rather than assumed, because the `--gdt` option ("geometric elements related
-to GD&T") suggests otherwise:
+This is the independent check CAD Assistant could not give us: it renders the graphical PMI
+that CAD Assistant draws none of.
 
-| input | annotations in the STEP | `IndexedLineSet` in the X3D |
+On a part with one solid, `--gdt 1` adds a face set and a line set per annotation:
+
+| input | solids | tessellated annotations | face sets with `--gdt 1` |
+| --- | --- | --- | --- |
+| `nist_ctc_01_asme1_ap242-e1.stp` | 1 | 23 | 22 |
+| a quid2pmi output | 1 | 60 | 15 |
+
+So the annotations quid2pmi writes are read and drawn by an independent tool. They are also
+structurally the same kind as the NIST reference suite's:
+
+| entity | NIST | quid2pmi |
 | --- | --- | --- |
-| `nist_ctc_01_asme1_ap242-e1.stp` | 23 `TESSELLATED_ANNOTATION_OCCURRENCE` | 21 |
-| a quid2pmi output | 60 `DRAUGHTING_CALLOUT` | 14 |
+| `TESSELLATED_ANNOTATION_OCCURRENCE` | 23 | 60 |
+| `TESSELLATED_GEOMETRIC_SET` | 23 | 60 |
+| `ANNOTATION_CURVE_OCCURRENCE` | 0 | 0 |
+| **`CAMERA_MODEL_D3`** | **1** | **0** |
 
-If those line sets were annotations, the file with 60 of them would not produce fewer than the
-file with 23. They track solids. `--gdt 0/1` and `--sketch 0/1` make no difference to the
-output at all, byte for byte.
-
-So this cannot be used to check whether quid2pmi's graphical PMI is well formed. NIST's PMI
-viewer is the [STEP File Analyzer and Viewer](https://github.com/usnistgov/SFA), which draws
-the annotations itself in Tcl and is Windows-only because it reads STEP through the IFCsvr COM
-toolkit.
+The only structural difference is the saved view, which OCCT's writer cannot produce. That is
+now the best-evidenced explanation for CAD Assistant drawing nothing: the annotations are
+present and well formed, but nothing activates them.
 
 ## Two patches are applied during the build
 
