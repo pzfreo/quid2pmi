@@ -1,0 +1,143 @@
+"""The end-to-end conversion: STEP in, recognised features annotated, STEP out."""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from quiddity import build_raw_recognition_result, import_step_geometry
+
+from .adapters import EXCLUDED_FAMILIES, FEATURE_FAMILIES, SUMMARY_FAMILIES, annotate
+from .layout import BoundingBox, layout
+from .model import Annotation
+from .step_pmi import build_document, write_step
+
+ALL_FAMILIES: frozenset[str] = frozenset(FEATURE_FAMILIES) | frozenset(SUMMARY_FAMILIES)
+
+
+@dataclass(frozen=True)
+class ConversionReport:
+    """What the conversion did, for the CLI to print and for tests to assert on."""
+
+    source: Path
+    output: Path
+    counts: dict[str, int]
+    unplaced: dict[str, int]
+    undrawn: dict[str, int]
+    annotations: tuple[Annotation, ...]
+
+    @property
+    def total(self) -> int:
+        return len(self.annotations)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "source": str(self.source),
+            "output": str(self.output),
+            "annotations": self.total,
+            "counts": dict(sorted(self.counts.items())),
+            "unplaced": dict(sorted(self.unplaced.items())),
+            "undrawn": dict(sorted(self.undrawn.items())),
+            "labels": [
+                {
+                    "family": a.family,
+                    "text": a.label,
+                    "anchor": list(a.anchor),
+                    "value": a.value,
+                    "dimension": a.dimension,
+                    "explanation": a.explanation,
+                }
+                for a in self.annotations
+            ],
+        }
+
+
+def resolve_families(requested: list[str] | None) -> set[str]:
+    """Expand the ``--families`` selection into concrete family names."""
+    if not requested:
+        return set(FEATURE_FAMILIES)
+    chosen: set[str] = set()
+    for item in requested:
+        for name in item.split(","):
+            name = name.strip()
+            if not name:
+                continue
+            if name == "all":
+                chosen |= ALL_FAMILIES
+            elif name == "features":
+                chosen |= set(FEATURE_FAMILIES)
+            elif name == "summary":
+                chosen |= set(SUMMARY_FAMILIES)
+            elif name in EXCLUDED_FAMILIES:
+                raise ValueError(f"{name!r} is evidence, not a feature family")
+            else:
+                chosen.add(name)
+    return chosen
+
+
+def _by_family(annotations: Sequence[Annotation]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for annotation in annotations:
+        counts[annotation.family] = counts.get(annotation.family, 0) + 1
+    return counts
+
+
+def _bounding_box(part: Any) -> BoundingBox:
+    bb = part.bounding_box()
+    return BoundingBox((bb.min.X, bb.min.Y, bb.min.Z), (bb.max.X, bb.max.Y, bb.max.Z))
+
+
+def convert(
+    source: Path,
+    output: Path,
+    *,
+    families: set[str] | None = None,
+    text_height: float | None = None,
+    standoff: float | None = None,
+    font: str = "Arial",
+    leaders: bool = True,
+    explain: bool = False,
+    explain_width: int = 44,
+    quiet: bool = False,
+) -> ConversionReport:
+    """Recognise features in ``source`` and write ``output`` with them as PMI.
+
+    Recognition runs in caller coordinates, so every annotation is positioned in
+    the coordinate system of the incoming STEP file and lands on the geometry the
+    output carries.
+
+    With ``explain`` set, each label also carries the feature described in plain
+    words, wrapped to ``explain_width`` characters. The explanation is always
+    present on the returned annotations and in the JSON report, whether or not it
+    is drawn.
+    """
+    part = import_step_geometry(str(source))
+    result = build_raw_recognition_result(part)
+
+    selected = families if families is not None else set(FEATURE_FAMILIES)
+    annotations, unplaced = annotate(result, selected)
+
+    drawn = [a.explained(explain_width) for a in annotations] if explain else annotations
+    source_of = {id(d): a for d, a in zip(drawn, annotations, strict=True)}
+
+    placed = layout(drawn, _bounding_box(part), text_height=text_height, standoff=standoff)
+    doc, written = build_document(
+        part.wrapped, placed, name=source.stem, font=font, leaders=leaders
+    )
+    write_step(doc, str(output), quiet=quiet)
+
+    # Report the annotations that reached the file, not the ones we hoped to write.
+    kept = tuple(source_of[id(label.annotation)] for label in written)
+    counts = _by_family(kept)
+    attempted = _by_family(annotations)
+    # Equal-valued annotations are not distinguishable by value, so the shortfall is
+    # counted per family rather than by testing membership.
+    undrawn = {
+        family: attempted[family] - counts.get(family, 0)
+        for family in attempted
+        if attempted[family] > counts.get(family, 0)
+    }
+
+    return ConversionReport(source, output, counts, unplaced, undrawn, kept)
