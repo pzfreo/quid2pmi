@@ -10,6 +10,7 @@ the record as unplaced when it cannot find a point.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
+from dataclasses import replace
 from typing import Any
 
 from .geometry import add, as_point, axis_vector, normalise, perpendicular, scale, sub
@@ -23,7 +24,21 @@ from .model import (
     Vec,
 )
 
-DIAMETER_SIGN = "Ø"  # Latin capital O with stroke: present in the default fonts.
+#: Used in the terse STEP label, whose text is drawn as glyph outlines: the
+#: Latin capital O with stroke is present in every font we might fall back to,
+#: where the typographically correct diameter sign is not.
+DIAMETER_SIGN = "\u00d8"
+#: Used in drawing callouts, which are rendered as HTML by the viewer and can
+#: have the real diameter sign -- the same character step-pmi-viewer writes for
+#: authored PMI, so the two read alike.
+DIAMETER_CALLOUT = "\u2300"
+
+#: Drawing symbols used in callouts.
+DEPTH = "\u21a7"  # downwards arrow from bar
+COUNTERBORE = "\u2334"  # conclusive
+COUNTERSINK = "\u2335"
+TIMES = "\u00d7"
+DEGREE = "\u00b0"
 
 #: Families carrying a recognised feature, emitted unless the caller narrows the set.
 FEATURE_FAMILIES: tuple[str, ...] = (
@@ -658,6 +673,118 @@ def generic_annotation(family: str, d: dict[str, Any]) -> Annotation | None:
     return Annotation(family, text, anchor, None, explanation=prose + ".")
 
 
+# --------------------------------------------------------------------------
+# Drawing callouts
+# --------------------------------------------------------------------------
+
+
+def _hole_callout(d: dict[str, Any]) -> str:
+    parts = [f"{DIAMETER_CALLOUT}{num(d.get('diameter'))}"]
+    if d.get("bottom") == "through":
+        parts.append("THRU")
+    elif d.get("depth") is not None:
+        parts.append(f"{DEPTH}{num(d.get('depth'))}")
+    if d.get("cbore") or d.get("spotface"):
+        parts.append(COUNTERBORE)
+    if d.get("csink"):
+        parts.append(COUNTERSINK)
+    return " ".join(parts)
+
+
+#: How each family reads as a drawing callout: the value, then the feature word.
+#: Written separately from the terse STEP label because a drawing leads with the
+#: size and says what the feature is quietly, where a STEP annotation name has to
+#: identify the family first.
+_CALLOUTS: dict[str, Callable[[dict[str, Any]], tuple[str, str]]] = {
+    "holes": lambda d: (_hole_callout(d), "hole"),
+    "bosses": lambda d: (
+        # A boss stands proud, so it takes no depth symbol.
+        f"{DIAMETER_CALLOUT}{num(d.get('diameter'))} {TIMES}{num(d.get('height'))}",
+        "boss",
+    ),
+    "chamfers": lambda d: (
+        f"{num(d.get('leg1'))}{TIMES}{num(d.get('angle'), 1)}{DEGREE}",
+        "chamfer",
+    ),
+    "fillets": lambda d: (f"R{num(d.get('radius'))}", "fillet"),
+    "blends": lambda d: (f"R{num(d.get('radius'))}", str(d.get("side") or "blend")),
+    "grooves": lambda d: (
+        f"{DIAMETER_CALLOUT}{num(d.get('diameter'))} {TIMES}{num(d.get('width'))}",
+        "groove",
+    ),
+    "turned_steps": lambda d: (f"{DIAMETER_CALLOUT}{num(d.get('diameter'))}", "turned step"),
+    "flats": lambda d: (f"{num(d.get('across'))} across", "flat"),
+    "step_levels": lambda d: (f"Z{num(d.get('z'))}", "level"),
+    "slots": lambda d: (f"{num(d.get('width'))}{TIMES}{num(d.get('length'))}", "slot"),
+    "plates": lambda d: (
+        f"{num(abs(float(d.get('hi', 0)) - float(d.get('lo', 0))))} thick",
+        "plate",
+    ),
+    "angled_steps": lambda d: (f"{num(d.get('angle'), 1)}{DEGREE}", "angled step"),
+    "paired_ramp_steps": lambda d: (f"{num(d.get('angle'), 1)}{DEGREE}", "ramp"),
+    "circular_blind_steps": lambda d: (f"R{num(d.get('radius'))}", "blind step"),
+    "through_steps": lambda d: (f"L{num(d.get('length'))}", "through step"),
+    "hole_patterns": lambda d: (
+        f"{len(d.get('holes') or ())}{TIMES} {DIAMETER_CALLOUT}{num(d.get('diameter'))}",
+        "bolt circle",
+    ),
+    "polygonal_bosses": lambda d: (
+        f"{num(d['across_flats'])} A/F {TIMES}{d['side_count']}",
+        "polygonal boss",
+    ),
+    "polygonal_stock": lambda d: (
+        f"{num(d['across_flats'])} A/F {TIMES}{d['side_count']}",
+        "polygonal stock",
+    ),
+    "double_d_bores": lambda d: (
+        f"{DIAMETER_CALLOUT}{num(d['major_diameter'])} {TIMES}{num(d['across_flats'])}",
+        "double-D bore",
+    ),
+    "countersinks": lambda d: (
+        f"{COUNTERSINK}{DIAMETER_CALLOUT}{num(d['diameter'])}",
+        "countersink",
+    ),
+    "oriented_slots": lambda d: (f"{num(d['width'])} wide", "oriented slot"),
+    "section_recesses": lambda d: (
+        f"{num(d['geometry']['run_interval'][1] - d['geometry']['run_interval'][0])} long",
+        str(d["classification"]["feature_kind"]).replace("_", " "),
+    ),
+}
+
+
+def _generic_callout(record: dict[str, Any], family: str) -> tuple[str, ...]:
+    """A callout for a family with no rule: the largest scalar it carries.
+
+    Better than echoing the terse label, which would repeat the family name once
+    as a value and once as the descriptor.
+    """
+    numbers = [
+        (k, v) for k, v in record.items() if isinstance(v, (int, float)) and not isinstance(v, bool)
+    ]
+    word = singular(family)
+    if not numbers:
+        return (word, "")
+    key, value = max(numbers, key=lambda kv: abs(float(kv[1])))
+    return (f"{num(value)} {key.replace('_', ' ')}", word)
+
+
+def callout_for(family: str, record: dict[str, Any], fallback: tuple[str, ...]) -> tuple[str, ...]:
+    """A drawing-style callout for one record.
+
+    The notation is per family and written by hand, because how a feature is
+    written -- a hole as diameter then depth, a chamfer as leg by angle -- is
+    ASME Y14.5 convention rather than anything the geometry states. The values
+    in it all come from the recognised record.
+    """
+    make = _CALLOUTS.get(family)
+    if make is not None:
+        try:
+            return make(record)
+        except (TypeError, ValueError, KeyError):
+            pass
+    return _generic_callout(record, family)
+
+
 def annotate(result: Any, families: set[str]) -> tuple[list[Annotation], dict[str, int]]:
     """Adapt every record in ``result`` belonging to ``families``.
 
@@ -681,7 +808,7 @@ def annotate(result: Any, families: set[str]) -> tuple[list[Annotation], dict[st
             if made is None:
                 unplaced[family] = unplaced.get(family, 0) + 1
             else:
-                annotations.append(made)
+                annotations.append(replace(made, callout=callout_for(family, d, made.text)))
     return annotations, unplaced
 
 

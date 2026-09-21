@@ -16,7 +16,7 @@ from typing import Any
 from quiddity.evidence import build_recognition_evidence
 from quiddity.inspection import inspect_face
 
-from .adapters import ADAPTERS, generic_annotation, singular
+from .adapters import ADAPTERS, callout_for, generic_annotation, singular
 from .geometry import normalise
 from .model import Annotation, Vec
 
@@ -101,6 +101,8 @@ def annotate_from_evidence(
                 anchor=anchor,
                 normal=made.normal or _normal_at(face, anchor),
             )
-        annotations.append(replace(made, faces=faces))
+        annotations.append(
+            replace(made, faces=faces, callout=callout_for(family, payload, made.text))
+        )
 
     return annotations, unplaced, covered

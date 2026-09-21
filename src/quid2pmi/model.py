@@ -38,6 +38,11 @@ class Annotation:
     value: float | None = None
     dimension: str | None = None
     explanation: str = ""
+    #: The same feature written as a drawing callout -- value first, with the
+    #: symbols a drawing uses -- paired with the feature word. Used where the
+    #: annotation is drawn as text rather than baked into STEP, so recognised
+    #: features read like the dimensions an engineer would have written.
+    callout: tuple[str, ...] = ()
     name: str = ""
     #: The part's own faces this feature is made of, when recognition proved them.
     #: Excluded from equality: they carry live topology, not comparable values.

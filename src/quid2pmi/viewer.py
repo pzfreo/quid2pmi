@@ -59,7 +59,9 @@ def _adapt(annotation: Annotation, diagonal: float) -> ViewerAnnotation:
     origin: Vec = (x + direction[0] * step, y + direction[1] * step, z + direction[2] * step)
     return ViewerAnnotation(
         kind="dimension",
-        cells=annotation.text,
+        # The drawing callout where the adapter produced one: the page draws text,
+        # so a recognised feature can read like a dimension rather than a label.
+        cells=annotation.callout or annotation.text,
         anchor=annotation.anchor,
         origin=origin,
         group=annotation.family,

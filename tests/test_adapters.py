@@ -202,3 +202,72 @@ def test_blend_on_a_circle_still_anchors_on_the_circle():
     (annotation,), _ = annotate(result, {"blends"})
     assert round(sum(v * v for v in annotation.anchor[:2]) ** 0.5, 6) == 48.0
     assert "circular path" in annotation.explanation
+
+
+def test_hole_callout_reads_as_a_drawing_writes_it():
+    """The STEP label leads with the family; a drawing leads with the size."""
+    from quid2pmi.adapters import callout_for
+
+    record = {
+        "axis": [0, 0, 1],
+        "location": [0, 0, 0],
+        "diameter": 8.0,
+        "depth": 12.0,
+        "bottom": "flat",
+    }
+    assert callout_for("holes", record, ("HOLE",)) == ("⌀8 ↧12", "hole")
+
+    through = dict(record, bottom="through")
+    assert callout_for("holes", through, ("HOLE",)) == ("⌀8 THRU", "hole")
+
+
+def test_entry_treatments_add_their_symbols():
+    from quid2pmi.adapters import callout_for
+
+    record = {"diameter": 8.0, "depth": 12.0, "bottom": "flat", "cbore": {"diameter": 14.0}}
+    assert callout_for("holes", record, ("HOLE",))[0].endswith("⌴")
+
+
+def test_a_boss_takes_no_depth_symbol():
+    """A boss stands proud; the depth symbol means into the material."""
+    from quid2pmi.adapters import DEPTH, callout_for
+
+    value, word = callout_for("bosses", {"diameter": 130.0, "height": 3.0}, ("BOSS",))
+    assert DEPTH not in value
+    assert value == "⌀130 ×3" and word == "boss"
+
+
+def test_polygonal_boss_states_its_size_not_its_name():
+    """With no rule it fell through to a fallback that echoed the family name."""
+    from quid2pmi.adapters import callout_for
+
+    record = {"side_count": 6, "across_flats": 100.0, "base": 0.0, "top": 50.0}
+    assert callout_for("polygonal_bosses", record, ("POLYGONAL BOSS",)) == (
+        "100 A/F ×6",
+        "polygonal boss",
+    )
+
+
+def test_a_family_with_no_rule_still_gets_a_size():
+    from quid2pmi.adapters import callout_for
+
+    value, word = callout_for("widgets", {"span": 12.5, "count": 2}, ("WIDGET",))
+    assert value == "12.5 span" and word == "widget"
+
+
+def test_callouts_never_repeat_the_family_as_its_own_value():
+    from quid2pmi.adapters import FEATURE_FAMILIES, callout_for
+
+    for family in FEATURE_FAMILIES:
+        value, word = callout_for(family, {}, (family.upper(),))
+        assert value != word, family
+
+
+def test_every_annotation_gets_a_callout(sample_step, tmp_path):
+    from quid2pmi import convert
+
+    report = convert(sample_step, tmp_path / "o.step", quiet=True)
+    assert report.annotations
+    for annotation in report.annotations:
+        assert annotation.callout, annotation.family
+        assert annotation.callout[0]
