@@ -14,6 +14,7 @@ from .evidence import annotate_from_evidence
 from .geometry import snap_to_axis
 from .layout import BoundingBox, layout
 from .model import Annotation
+from .profiles import DEFAULT_PROFILE, ViewerProfile
 from .sightlines import SightTester
 from .step_pmi import build_document, write_step
 
@@ -35,6 +36,8 @@ class ConversionReport:
     attached: int
     #: Faces coloured by their feature family.
     coloured: int
+    #: The viewer compatibility profile the output was written for.
+    profile: str
     annotations: tuple[Annotation, ...]
 
     @property
@@ -52,6 +55,7 @@ class ConversionReport:
             "obstructed": self.obstructed,
             "attached": self.attached,
             "coloured": self.coloured,
+            "profile": self.profile,
             "labels": [
                 {
                     "family": a.family,
@@ -115,6 +119,7 @@ def convert(
     explain_width: int = 44,
     colours: bool = True,
     draw_text: bool = False,
+    profile: ViewerProfile = DEFAULT_PROFILE,
     quiet: bool = False,
 ) -> ConversionReport:
     """Recognise features in ``source`` and write ``output`` with them as PMI.
@@ -174,6 +179,7 @@ def convert(
         colours=colours,
         explain_names=explain,
         draw_text=draw_text,
+        profile=profile,
     )
     write_step(doc, str(output), quiet=quiet)
 
@@ -191,5 +197,14 @@ def convert(
 
     attached = sum(1 for a in kept if a.faces)
     return ConversionReport(
-        source, output, counts, unplaced, undrawn, obstructed, attached, coloured, kept
+        source,
+        output,
+        counts,
+        unplaced,
+        undrawn,
+        obstructed,
+        attached,
+        coloured,
+        profile.name,
+        kept,
     )

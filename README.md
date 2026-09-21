@@ -80,6 +80,21 @@ Assistant draws none of it, and a part's worth of those callouts crashes its imp
 outlines added as ordinary geometry, in a separate shape named `quiddity labels`, render
 everywhere. That is what `--draw-text` does.
 
+### Viewer profiles
+
+Two of the choices above are workarounds for one consumer, not properties of the standard, so
+they live behind `--profile`:
+
+| | `cad-assistant` (default) | `ap242` |
+| --- | --- | --- |
+| thickness-like sizes | `Size_CurveLength` | `Size_Thickness` |
+| `--draw-text` puts text | in the model as geometry | in the PMI presentation |
+| spool with `--draw-text` | 11.3 MB | 2.1 MB |
+
+`ap242` is the standard-correct output. Use it for a viewer that renders graphical PMI and does
+not crash on a thickness dimension. It has not been verified against such a viewer here --
+only CAD Assistant and FreeCAD were available, and both are built on OCCT.
+
 **A dimension named `thickness` crashes CAD Assistant.** `Size_Thickness` makes OCCT write
 `DIMENSIONAL_SIZE(...,'thickness')`, and importing that segfaults CAD Assistant. Measured on one
 part with sixteen chamfers, holding everything else constant: `'thickness'` crashes, while
@@ -130,6 +145,7 @@ directly.
 | `-e, --explain` | include the plain-words explanation in drawn labels (needs `--draw-text`) |
 | `--explain-width` | wrap explanation text at this many characters (default 44) |
 | `--no-colour` | do not colour each feature's faces by family |
+| `--profile` | viewer to write for: `cad-assistant` (default) or `ap242` |
 | `--draw-text` | add the label text to the model as geometry (see size cost below) |
 | `--json` | also write the annotation list as JSON |
 | `-q, --quiet` | suppress the summary |

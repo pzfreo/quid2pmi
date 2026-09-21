@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .adapters import FEATURE_FAMILIES, SUMMARY_FAMILIES
 from .convert import convert, resolve_families
+from .profiles import PROFILES, resolve_profile
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -77,6 +78,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="do not colour each feature's faces by family",
     )
     parser.add_argument(
+        "--profile",
+        choices=sorted(PROFILES),
+        default="cad-assistant",
+        help="viewer to write for: "
+        + "; ".join(f"{name} -- {p.summary}" for name, p in sorted(PROFILES.items())),
+    )
+    parser.add_argument(
         "--draw-text",
         action="store_true",
         help="also draw label text as annotation geometry. CAD Assistant does not "
@@ -104,6 +112,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
+        viewer = resolve_profile(args.profile)
+    except ValueError as exc:
+        print(f"quid2pmi: {exc}", file=sys.stderr)
+        return 2
+
+    try:
         report = convert(
             args.source,
             output,
@@ -116,6 +130,7 @@ def main(argv: list[str] | None = None) -> int:
             explain_width=args.explain_width,
             colours=not args.no_colour,
             draw_text=args.draw_text,
+            profile=viewer,
             quiet=args.quiet,
         )
     except Exception as exc:

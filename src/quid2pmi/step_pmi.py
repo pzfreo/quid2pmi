@@ -37,6 +37,7 @@ from OCP.XCAFDimTolObjects import (
     XCAFDimTolObjects_DimensionType_Size_CurveLength,
     XCAFDimTolObjects_DimensionType_Size_Diameter,
     XCAFDimTolObjects_DimensionType_Size_Radius,
+    XCAFDimTolObjects_DimensionType_Size_Thickness,
 )
 from OCP.XCAFDoc import XCAFDoc_ColorType, XCAFDoc_Dimension, XCAFDoc_DocumentTool
 
@@ -50,6 +51,7 @@ from .model import (
     Annotation,
 )
 from .palette import colour_for
+from .profiles import DEFAULT_PROFILE, ViewerProfile
 
 # Every annotation quid2pmi writes describes one feature, so it is attached to a
 # single shape label. AP242 location dimensions are measured *between* two shapes,
@@ -58,18 +60,30 @@ from .palette import colour_for
 DIMENSION_TYPES: dict[str, Any] = {
     DIM_DIAMETER: XCAFDimTolObjects_DimensionType_Size_Diameter,
     DIM_RADIUS: XCAFDimTolObjects_DimensionType_Size_Radius,
-    # Size_Thickness is deliberately not used. It writes DIMENSIONAL_SIZE with the
-    # name 'thickness', which segfaults CAD Assistant on import. Measured on one
-    # part with sixteen chamfers, holding everything else constant: 'thickness'
-    # crashes, while 'curve length', 'radius' and ANGULAR_SIZE all open. Both
-    # thickness and length are linear sizes of one feature, so they share a type.
-    DIM_THICKNESS: XCAFDimTolObjects_DimensionType_Size_CurveLength,
+    DIM_THICKNESS: XCAFDimTolObjects_DimensionType_Size_Thickness,
     DIM_LENGTH: XCAFDimTolObjects_DimensionType_Size_CurveLength,
     DIM_ANGLE: XCAFDimTolObjects_DimensionType_Size_Angular,
 }
 
-#: Never written: it crashes CAD Assistant's importer. Asserted by the tests.
+#: Substituted for Size_Thickness when a profile asks to avoid it. Both are linear
+#: sizes of a single feature, so the value keeps its meaning.
+THICKNESS_SUBSTITUTE = XCAFDimTolObjects_DimensionType_Size_CurveLength
+
+#: The STEP name Size_Thickness produces, which segfaults CAD Assistant's importer.
 FATAL_DIMENSION_NAME = "thickness"
+
+
+def dimension_type(kind: str | None, profile: ViewerProfile) -> Any | None:
+    """The XCAF dimension type for a semantic kind under ``profile``."""
+    if kind is None:
+        return None
+    chosen = DIMENSION_TYPES.get(kind)
+    if chosen is None:
+        return None
+    if kind == DIM_THICKNESS and profile.avoid_thickness:
+        return THICKNESS_SUBSTITUTE
+    return chosen
+
 
 #: Colour of the label text added as geometry.
 LABEL_COLOUR = (0.12, 0.12, 0.14)
@@ -180,6 +194,7 @@ def build_document(
     colours: bool = True,
     explain_names: bool = False,
     draw_text: bool = False,
+    profile: ViewerProfile = DEFAULT_PROFILE,
 ) -> tuple[TDocStd_Document, list[PlacedLabel], int]:
     """Assemble an XCAF document containing ``shape`` and one dimension per label.
 
@@ -243,15 +258,17 @@ def build_document(
     written: list[PlacedLabel] = []
     for label in labels:
         annotation = label.annotation
-        # Only the leader goes into the PMI presentation. Glyph outlines there are
-        # never drawn and a part's worth of them crashes the importer; the text is
-        # added as geometry instead.
-        presentation = _presentation(label, font, leaders, text=False)
+        # Under the CAD Assistant profile only the leader goes into the PMI
+        # presentation, because glyph outlines there are never drawn and a part's
+        # worth of them crashes the importer; the text goes in as geometry. A
+        # viewer that renders graphical PMI gets the text here instead.
+        in_presentation = draw_text and not profile.text_as_geometry
+        presentation = _presentation(label, font, leaders, text=in_presentation)
         if presentation is None:
             continue
         written.append(label)
         obj = XCAFDimTolObjects_DimensionObject()
-        kind = DIMENSION_TYPES.get(annotation.dimension or "")
+        kind = dimension_type(annotation.dimension, profile)
         value = annotation.value if kind is not None else None
         obj.SetType(kind if value is not None else PRESENTATION_ONLY)
         if value is not None:
@@ -275,7 +292,7 @@ def build_document(
         dimension.SetObject(obj)
         dimtol_tool.SetDimension(register(annotation), dim_label)
 
-    if draw_text:
+    if draw_text and profile.text_as_geometry:
         _add_label_geometry(doc, shape_tool, colour_tool, written, font, colours)
 
     return doc, written, len(painted)

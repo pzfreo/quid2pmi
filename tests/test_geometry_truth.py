@@ -19,6 +19,7 @@ from quiddity import import_step_geometry
 from quid2pmi import convert
 from quid2pmi.layout import BoundingBox, layout
 from quid2pmi.model import DIM_ANGLE, DIM_THICKNESS
+from quid2pmi.profiles import AP242
 from quid2pmi.sightlines import SightTester
 from tests.test_convert import read_pmi
 
@@ -132,7 +133,7 @@ def test_labels_survive_into_the_step_file_whole(converted):
         assert f"SHAPE_ASPECT('{head}" in written, annotation.label
 
 
-def test_never_writes_a_thickness_dimension(converted):
+def test_default_profile_never_writes_a_thickness_dimension(converted):
     """DIMENSIONAL_SIZE(...,'thickness') segfaults CAD Assistant's importer.
 
     Measured on this part, holding everything else constant: the same file with
@@ -141,7 +142,29 @@ def test_never_writes_a_thickness_dimension(converted):
     thickness-like size, so this is a property of the output, not of chamfers.
     """
     report, _ = converted
+    assert report.profile == "cad-assistant"
     assert "'thickness'" not in report.output.read_text(errors="ignore")
+
+
+def test_ap242_profile_does_write_a_thickness_dimension(spool, tmp_path):
+    """The workaround is CAD Assistant's, not the standard's: 'thickness' is
+    valid AP242 and the NIST PMI reference files use it. A viewer that reads it
+    should get the semantically correct type."""
+    report = convert(spool, tmp_path / "strict.step", profile=AP242, quiet=True)
+    assert report.profile == "ap242"
+    assert "'thickness'" in report.output.read_text(errors="ignore")
+
+
+def test_ap242_profile_puts_text_in_the_pmi_presentation(spool, tmp_path):
+    cad = convert(spool, tmp_path / "cad.step", draw_text=True, quiet=True)
+    strict = convert(spool, tmp_path / "ap.step", draw_text=True, profile=AP242, quiet=True)
+
+    assert "quiddity labels" in cad.output.read_text(errors="ignore")
+    assert "quiddity labels" not in strict.output.read_text(errors="ignore")
+
+    cad_edges = sum(edges for _, _, edges, _ in read_pmi(cad.output))
+    strict_edges = sum(edges for _, _, edges, _ in read_pmi(strict.output))
+    assert strict_edges > cad_edges
 
 
 def test_thickness_families_still_carry_their_value(converted):

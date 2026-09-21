@@ -76,3 +76,16 @@ def test_cli_explain_width_is_honoured(sample_step, tmp_path):
         )
         == 0
     )
+
+
+def test_cli_rejects_an_unknown_profile(sample_step, capsys):
+    import pytest
+
+    with pytest.raises(SystemExit):
+        main([str(sample_step), "--profile", "nonesuch"])
+
+
+def test_cli_ap242_profile_writes_thickness(sample_step, tmp_path):
+    out = tmp_path / "strict.step"
+    assert main([str(sample_step), "-o", str(out), "-q", "--profile", "ap242"]) == 0
+    assert out.is_file()
