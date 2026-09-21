@@ -105,9 +105,10 @@ def test_annotation_without_explanation_is_unchanged():
 
 
 def test_explain_costs_nothing_unless_text_is_drawn(sample_step, tmp_path):
-    """Explanations ride in the model-tree names, which are free."""
-    plain = convert(sample_step, tmp_path / "plain.step")
-    verbose = convert(sample_step, tmp_path / "verbose.step", explain=True)
+    """Explanations ride in the model-tree names, which are free. Only the drawn
+    label spells them out, so with --no-draw-text they cost nothing at all."""
+    plain = convert(sample_step, tmp_path / "plain.step", draw_text=False)
+    verbose = convert(sample_step, tmp_path / "verbose.step", explain=True, draw_text=False)
 
     plain_pmi = {name: edges for _, _, edges, name in read_pmi(plain.output)}
     verbose_pmi = {name: edges for _, _, edges, name in read_pmi(verbose.output)}
@@ -136,26 +137,20 @@ def test_explanations_live_in_the_json_report_not_the_step(sample_step, tmp_path
     assert all(label["explanation"] for label in payload["labels"])
 
 
-def test_draw_text_adds_the_labels_as_geometry(sample_step, tmp_path):
-    """Text goes in as a named shape, not as an annotation a viewer ignores."""
-    plain = convert(sample_step, tmp_path / "plain.step")
-    drawn = convert(sample_step, tmp_path / "drawn.step", explain=True, draw_text=True)
+def test_the_label_text_goes_into_the_pmi_presentation(sample_step, tmp_path):
+    """Where the NIST CTC files put it. The alternative -- a second shape of
+    glyph outlines beside the part -- was a workaround for CAD Assistant, which
+    draws no graphical PMI, and it is gone."""
+    bare = convert(sample_step, tmp_path / "bare.step", draw_text=False)
+    drawn = convert(sample_step, tmp_path / "drawn.step", explain=True)
 
-    assert "quiddity labels" not in plain.output.read_text(errors="ignore")
-    assert "quiddity labels" in drawn.output.read_text(errors="ignore")
-    assert drawn.output.stat().st_size > plain.output.stat().st_size
+    assert "quiddity labels" not in drawn.output.read_text(errors="ignore")
 
-
-def test_draw_text_keeps_the_pmi_presentations_small(sample_step, tmp_path):
-    """Glyph outlines in a PMI presentation are never drawn and crash the
-    importer at a part's worth of them, so only the leader goes in there."""
-    plain = convert(sample_step, tmp_path / "plain.step")
-    drawn = convert(sample_step, tmp_path / "drawn.step", explain=True, draw_text=True)
-
-    plain_pmi = {name: edges for _, _, edges, name in read_pmi(plain.output)}
+    bare_pmi = {name: edges for _, _, edges, name in read_pmi(bare.output)}
     drawn_pmi = {name: edges for _, _, edges, name in read_pmi(drawn.output)}
-    assert plain_pmi == drawn_pmi
-    assert all(edges < 20 for edges in drawn_pmi.values())
+    # Without the text a presentation is just the leader; with it, the glyphs.
+    assert all(edges < 20 for edges in bare_pmi.values())
+    assert all(drawn_pmi[name] > edges for name, edges in bare_pmi.items())
 
 
 def test_explanation_is_reported_whether_or_not_it_is_drawn(sample_step, tmp_path):

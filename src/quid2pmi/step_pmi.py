@@ -86,7 +86,6 @@ def dimension_type(kind: str | None, profile: ViewerProfile) -> Any | None:
 
 
 #: Colour of the label text added as geometry.
-LABEL_COLOUR = (0.12, 0.12, 0.14)
 
 #: Used when a feature has no semantic value: a graphical annotation and nothing more.
 PRESENTATION_ONLY = XCAFDimTolObjects_DimensionType_DimensionPresentation
@@ -193,7 +192,7 @@ def build_document(
     leaders: bool = True,
     colours: bool = True,
     explain_names: bool = False,
-    draw_text: bool = False,
+    draw_text: bool = True,
     profile: ViewerProfile = DEFAULT_PROFILE,
 ) -> tuple[TDocStd_Document, list[PlacedLabel], int]:
     """Assemble an XCAF document containing ``shape`` and one dimension per label.
@@ -258,12 +257,7 @@ def build_document(
     written: list[PlacedLabel] = []
     for label in labels:
         annotation = label.annotation
-        # Under the CAD Assistant profile only the leader goes into the PMI
-        # presentation, because glyph outlines there are never drawn and a part's
-        # worth of them crashes the importer; the text goes in as geometry. A
-        # viewer that renders graphical PMI gets the text here instead.
-        in_presentation = draw_text and not profile.text_as_geometry
-        presentation = _presentation(label, font, leaders, text=in_presentation)
+        presentation = _presentation(label, font, leaders, text=draw_text)
         if presentation is None:
             continue
         written.append(label)
@@ -292,52 +286,7 @@ def build_document(
         dimension.SetObject(obj)
         dimtol_tool.SetDimension(register(annotation), dim_label)
 
-    if draw_text and profile.text_as_geometry:
-        _add_label_geometry(doc, shape_tool, colour_tool, written, font, colours)
-
     return doc, written, len(painted)
-
-
-def _add_label_geometry(
-    doc: TDocStd_Document,
-    shape_tool: Any,
-    colour_tool: Any,
-    labels: list[PlacedLabel],
-    font: str,
-    colours: bool,
-) -> None:
-    """Add the label text to the document as ordinary geometry.
-
-    A viewer renders geometry. It does not necessarily render an AP242 graphical
-    annotation: OCCT writes those as curve-based annotation occurrences with no
-    saved view to activate them, and CAD Assistant draws none of it -- and
-    segfaults on importing a part's worth of them. The same outlines in a
-    separate, clearly named shape are ordinary geometry, at the cost of adding a
-    second shape to the file alongside the untouched part.
-    """
-    builder = BRep_Builder()
-    compound = TopoDS_Compound()
-    builder.MakeCompound(compound)
-    count = 0
-    for label in labels:
-        # Glyph outlines, not filled faces: a face carries a surface per character
-        # and the file grows several-fold for text that reads the same either way.
-        for edge in _text_edges(label, font):
-            builder.Add(compound, edge)
-            count += 1
-    if not count:
-        return
-    label = shape_tool.AddShape(compound, False)
-    if label.IsNull():
-        return
-    TDataStd_Name.Set_s(label, TCollection_ExtendedString("quiddity labels"))
-    if colours:
-        red, green, blue = LABEL_COLOUR
-        colour_tool.SetColor(
-            label,
-            Quantity_Color(red, green, blue, Quantity_TOC_sRGB),
-            XCAFDoc_ColorType.XCAFDoc_ColorSurf,
-        )
 
 
 @contextmanager

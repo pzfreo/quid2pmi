@@ -155,16 +155,18 @@ def test_ap242_profile_does_write_a_thickness_dimension(spool, tmp_path):
     assert "'thickness'" in report.output.read_text(errors="ignore")
 
 
-def test_ap242_profile_puts_text_in_the_pmi_presentation(spool, tmp_path):
-    cad = convert(spool, tmp_path / "cad.step", draw_text=True, quiet=True)
-    strict = convert(spool, tmp_path / "ap.step", draw_text=True, profile=AP242, quiet=True)
-
-    assert "quiddity labels" in cad.output.read_text(errors="ignore")
-    assert "quiddity labels" not in strict.output.read_text(errors="ignore")
-
-    cad_edges = sum(edges for _, _, edges, _ in read_pmi(cad.output))
-    strict_edges = sum(edges for _, _, edges, _ in read_pmi(strict.output))
-    assert strict_edges > cad_edges
+def test_the_drawn_pmi_uses_the_entities_the_nist_files_use(spool, tmp_path):
+    """The NIST CTC reference files carry drawn PMI as tessellated annotation
+    occurrences over tessellated curve sets. So does ours."""
+    report = convert(spool, tmp_path / "drawn.step", quiet=True)
+    text = report.output.read_text(errors="ignore")
+    for entity in (
+        "TESSELLATED_ANNOTATION_OCCURRENCE",
+        "TESSELLATED_CURVE_SET",
+        "TESSELLATED_GEOMETRIC_SET",
+        "DRAUGHTING_MODEL",
+    ):
+        assert entity in text, entity
 
 
 def test_thickness_families_still_carry_their_value(converted):

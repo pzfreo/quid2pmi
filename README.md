@@ -76,8 +76,8 @@ lets the STEP writer's own output through.
 `--viewer` writes a self-contained web page through
 [step-pmi-viewer](https://github.com/pzfreo/step-pmi-viewer): the part in its feature colours,
 with every label as HTML text rather than geometry. That keeps labels crisp at any zoom and
-costs almost nothing -- a 65-feature part is under 400 kB, against 11 MB for the same labels
-drawn into the STEP file with `--draw-text`.
+costs almost nothing -- a 65-feature part is under 400 kB, against 2.2 MB for the same labels
+drawn into the STEP file as glyph outlines.
 
 It also sidesteps the viewer limits documented above: the page draws what it is given, so there
 is no question of saved views or which annotation forms a viewer honours.
@@ -110,44 +110,48 @@ kinds of annotation and they do not all survive to the screen:
 | --- | --- | --- |
 | Face colour per feature family | yes | **yes** — the main signal |
 | Semantic PMI dimension (Ø, R, angle) | yes | **yes**, with its own leader |
-| Label text as geometry (`--draw-text`) | yes | **yes** |
 | Dimension name (`HOLE Ø8 THRU`) | yes | in the annotation's properties |
 | Label text as AP242 graphical PMI | yes | **no** (see below) |
 | Sub-shape names on faces | **no** — OCCT does not export them | no |
 
-**Why annotation text is written as geometry.** OCCT does write the label into the PMI
-presentation: 60 `DRAUGHTING_CALLOUT` entities on a `DRAUGHTING_MODEL`, carried as
-`TESSELLATED_ANNOTATION_OCCURRENCE` — the same form the NIST PMI reference suite uses, and
-NIST's own STP2X3D renders them (see [`tools/stp2x3d`](tools/stp2x3d)). The annotations are
-sound.
+**Drawn PMI goes in the annotation, as the NIST files do it.** The label text and its leader
+are written into the PMI presentation: `DRAUGHTING_CALLOUT` entities on a `DRAUGHTING_MODEL`,
+carried as `TESSELLATED_ANNOTATION_OCCURRENCE` over `TESSELLATED_CURVE_SET` — the same entity
+types as `nist_ctc_01_asme1_ap242.stp`. NIST's own STP2X3D renders them (see
+[`tools/stp2x3d`](tools/stp2x3d)), and so does `--viewer`.
 
-What is missing is the **AP242 saved view**: zero `CAMERA_MODEL_D3` and `PRESENTATION_VIEW`
-entities, because `STEPCAFControl_Writer` has no view mode at all — only the *reader* has
-`SetViewMode`. Against the NIST reference, that is the *only* structural difference. Viewers
-drive graphical PMI display from saved views, so CAD Assistant has nothing to switch on and
-draws none of it. The same outlines added as ordinary geometry, in a separate shape named
-`quiddity labels`, render everywhere, and that is what `--draw-text` does — at the cost of
-turning text into B-rep.
+One difference from the NIST files remains: theirs carry filled glyphs as 37
+`COMPLEX_TRIANGULATED_SURFACE_SET`, ours are glyph outlines. That is not a choice.
+`XCAFDoc_Dimension::SetPresentation` given a compound of meshed *faces* writes **no annotation
+entity at all** — OCCT's writer only turns edges into a presentation. Tested both ways on the
+same document: edges produce one `TESSELLATED_ANNOTATION_OCCURRENCE`, faces produce nothing.
+Filled text would need the STEP file to be post-processed, as `tools/savedview` post-processes
+the saved view.
 
-A saved view was tried and does **not** help. `tools/savedview` injects a `CAMERA_MODEL_D3`
-wired as the NIST reference files wire it, and OCCT's reader confirms it: one saved view, the
-same count it reads from `nist_ctc_01_asme1_ap242-e1.stp`. CAD Assistant still draws none of
-the annotation text. So the missing saved view was not the explanation, and text as geometry
-remains the only route that works there.
+**CAD Assistant still draws none of it**, and the reason is not what it first appeared to be.
+There is no **AP242 saved view** in OCCT's output: zero `CAMERA_MODEL_D3` and
+`PRESENTATION_VIEW`, because `STEPCAFControl_Writer` has no view mode at all — only the
+*reader* has `SetViewMode`. Against the NIST reference that is the only structural difference.
+But `tools/savedview` injects a `CAMERA_MODEL_D3` wired as the NIST files wire it, OCCT's
+reader confirms it reads back, and CAD Assistant draws the annotation text no more than before.
+So the saved view was not the explanation either.
+
+Earlier versions worked around this by adding the glyph outlines a second time as ordinary
+geometry, in a shape named `quiddity labels`. That is gone. It tripled the file size, it put
+text in the model where a downstream tool would mistake it for the part, and it bought
+legibility in exactly one viewer. `--viewer` covers that need properly, with HTML text.
 
 ### Viewer profiles
 
-Two of the choices above are workarounds for one consumer, not properties of the standard, so
-they live behind `--profile`:
+One of the choices above is a workaround for one consumer, not a property of the standard, so
+it lives behind `--profile`:
 
 | | `cad-assistant` (default) | `ap242` |
 | --- | --- | --- |
 | thickness-like sizes | `Size_CurveLength` | `Size_Thickness` |
-| `--draw-text` puts text | in the model as geometry | in the PMI presentation |
-| spool with `--draw-text` | 11.3 MB | 2.1 MB |
 
-`ap242` is the standard-correct output. Use it for a viewer that renders graphical PMI and does
-not crash on a thickness dimension. It has not been verified against such a viewer here --
+`ap242` is the standard-correct output. Use it for a viewer that does not crash on a thickness
+dimension. It has not been verified against such a viewer here --
 only CAD Assistant and FreeCAD were available, and both are built on OCCT.
 
 **A dimension named `thickness` crashes CAD Assistant.** `Size_Thickness` makes OCCT write
@@ -172,17 +176,17 @@ CHAMFER 1x1 45deg
   Turned chamfer about the Z axis, legs 1 and 1 at 45 degrees.
 ```
 
-These are always in `--json` and on the annotations the Python API returns. `--draw-text` also
-puts them on the model as geometry, where a viewer will actually render them.
+These are always in `--json` and on the annotations the Python API returns. `--explain` also
+spells them out in the drawn label.
 
-Text becomes B-rep geometry, at roughly 14 KB per character, so what you draw sets the file
-size. Measured on a 60-feature part:
+Every character is a set of outline curves, so what you draw sets the file size. Measured on
+the 60-feature spool:
 
-| drawn | characters | file |
-| --- | --- | --- |
-| nothing — colour and PMI only (default) | 0 | 0.4 MB |
-| terse labels (`--draw-text`) | 810 | 11.3 MB |
-| full explanations (`--draw-text --explain`) | 5209 | 80.4 MB |
+| drawn | file |
+| --- | --- |
+| leaders only (`--no-draw-text`) | 0.4 MB |
+| terse labels (default) | 2.2 MB |
+| full explanations (`--explain`) | 13.8 MB |
 
 Narrow the families or the explanation width if that matters; both reduce the character count
 directly.
@@ -197,12 +201,11 @@ directly.
 | `--standoff` | gap between the part's bounding box and the label plane (default: 10% of the diagonal) |
 | `--font` | label font (default Arial) |
 | `--no-leaders` | omit leader lines |
-| `-e, --explain` | include the plain-words explanation in drawn labels (needs `--draw-text`) |
+| `-e, --explain` | include the plain-words explanation in the drawn labels |
 | `--explain-width` | wrap explanation text at this many characters (default 44) |
 | `--no-colour` | do not colour each feature's faces by family |
 | `--profile` | viewer to write for: `cad-assistant` (default) or `ap242` |
-| `--draw-text` | add the label text to the model (see size cost below) |
-| `--text-in` | where `--draw-text` puts it: `geometry` or `annotation` |
+| `--no-draw-text` | write only the leader into each PMI presentation, not the text |
 | `--json` | also write the annotation list as JSON |
 | `-q, --quiet` | suppress the summary |
 | `-v, --verbose` | also show the STEP writer's own progress output |

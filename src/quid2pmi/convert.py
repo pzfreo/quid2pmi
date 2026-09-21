@@ -118,9 +118,8 @@ def convert(
     explain: bool = False,
     explain_width: int = 44,
     colours: bool = True,
-    draw_text: bool = False,
+    draw_text: bool = True,
     profile: ViewerProfile = DEFAULT_PROFILE,
-    text_in: str | None = None,
     viewer: Path | None = None,
     quiet: bool = False,
     progress: Callable[[str], None] | None = None,
@@ -139,11 +138,6 @@ def convert(
     into the drawn label when ``draw_text`` is also set. The explanation is always
     present on the returned annotations and in the JSON report either way.
     """
-    if text_in is not None:
-        # Where the text goes and which dimension types are safe are independent
-        # choices; a caller may need one profile's answer to each.
-        profile = replace(profile, text_as_geometry=(text_in == "geometry"))
-
     say = progress if progress is not None else lambda _: None
 
     say("reading STEP")

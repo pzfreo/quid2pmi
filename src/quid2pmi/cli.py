@@ -66,7 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--explain",
         action="store_true",
         help="describe each feature in plain words, in its model-tree name "
-        "(and in the drawn label when --draw-text is on)",
+        "(and in the drawn label unless --no-draw-text)",
     )
     parser.add_argument(
         "--explain-width",
@@ -90,26 +90,20 @@ def build_parser() -> argparse.ArgumentParser:
         + "; ".join(f"{name} -- {p.summary}" for name, p in sorted(PROFILES.items())),
     )
     parser.add_argument(
-        "--text-in",
-        choices=("geometry", "annotation"),
-        help="where --draw-text puts the label text: as model geometry, which any "
-        "viewer renders, or inside the PMI annotation, which is far smaller but "
-        "needs a viewer that draws graphical PMI (default: from --profile)",
-    )
-    parser.add_argument(
-        "--draw-text",
-        action="store_true",
-        help="also draw label text as annotation geometry. CAD Assistant does not "
-        "render it -- OCCT writes no AP242 saved view -- and it dominates file size, "
-        "so it is off by default and only useful for viewers that do",
+        "--no-draw-text",
+        dest="draw_text",
+        action="store_false",
+        help="write only the leader into each PMI presentation, not the label text. "
+        "The text is what the file size is made of, so this is much smaller -- at "
+        "the cost of annotations no viewer can read without the semantic values",
     )
     parser.add_argument(
         "--viewer",
         type=Path,
         metavar="HTML",
         help="also write a self-contained web page showing the features, via "
-        "step-pmi-viewer; labels there are text rather than geometry, so they "
-        "stay legible without the file size --draw-text costs",
+        "step-pmi-viewer; labels there are HTML rather than glyph outlines, so "
+        "they stay legible at any zoom",
     )
     parser.add_argument("--json", type=Path, help="also write the annotation list as JSON")
     parser.add_argument("-q", "--quiet", action="store_true", help="only report errors")
@@ -191,7 +185,6 @@ def main(argv: list[str] | None = None) -> int:
                 colours=not args.no_colour,
                 draw_text=args.draw_text,
                 profile=viewer,
-                text_in=args.text_in,
                 viewer=args.viewer,
                 quiet=not args.verbose,
                 progress=phase,

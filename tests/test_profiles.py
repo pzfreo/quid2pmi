@@ -21,5 +21,5 @@ def test_unknown_profile_names_the_alternatives():
 
 
 def test_the_workarounds_are_only_in_the_cad_assistant_profile():
-    assert CAD_ASSISTANT.avoid_thickness and CAD_ASSISTANT.text_as_geometry
-    assert not AP242.avoid_thickness and not AP242.text_as_geometry
+    assert CAD_ASSISTANT.avoid_thickness
+    assert not AP242.avoid_thickness

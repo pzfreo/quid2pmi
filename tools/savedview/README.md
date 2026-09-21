@@ -21,7 +21,8 @@ from `nist_ctc_01_asme1_ap242-e1.stp` — and CAD Assistant still draws nothing.
 is that CAD Assistant does not render OCCT-written graphical PMI at all, saved view or not.
 
 Kept because the output is standards-correct and a viewer that does honour saved views may
-make use of it. `quid2pmi --draw-text --text-in geometry` remains the route that works.
+make use of it, and the text-as-geometry workaround that did has been removed: use `--viewer`
+to see the labels instead.
 
 ## What it writes
 

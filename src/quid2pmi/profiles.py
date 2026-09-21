@@ -20,24 +20,18 @@ class ViewerProfile:
     #: which is valid AP242 -- the NIST PMI reference files use it -- but
     #: segfaults CAD Assistant's importer.
     avoid_thickness: bool
-    #: Put label text in the model as geometry rather than in the PMI
-    #: presentation. OCCT writes no AP242 saved view, so graphical PMI has
-    #: nothing to activate it and viewers do not draw it.
-    text_as_geometry: bool
 
 
 CAD_ASSISTANT = ViewerProfile(
     name="cad-assistant",
-    summary="Works around CAD Assistant: no thickness dimensions, text as geometry.",
+    summary="Works around CAD Assistant: no thickness dimensions.",
     avoid_thickness=True,
-    text_as_geometry=True,
 )
 
 AP242 = ViewerProfile(
     name="ap242",
-    summary="Standard-correct output: thickness dimensions, text as graphical PMI.",
+    summary="Standard-correct output: thickness dimensions included.",
     avoid_thickness=False,
-    text_as_geometry=False,
 )
 
 PROFILES: dict[str, ViewerProfile] = {p.name: p for p in (CAD_ASSISTANT, AP242)}

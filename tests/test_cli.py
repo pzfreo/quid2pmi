@@ -50,15 +50,16 @@ def test_without_quiet_the_summary_is_printed(sample_step, tmp_path, capfd):
     assert "annotations" in capfd.readouterr().err
 
 
-def test_cli_draw_text_flag_adds_label_geometry(sample_step, tmp_path):
-    plain = tmp_path / "plain.step"
+def test_cli_draws_the_label_text_unless_told_not_to(sample_step, tmp_path):
     drawn = tmp_path / "drawn.step"
-    assert main([str(sample_step), "-o", str(plain), "-q"]) == 0
-    assert main([str(sample_step), "-o", str(drawn), "-q", "--explain", "--draw-text"]) == 0
+    bare = tmp_path / "bare.step"
+    assert main([str(sample_step), "-o", str(drawn), "-q"]) == 0
+    assert main([str(sample_step), "-o", str(bare), "-q", "--no-draw-text"]) == 0
 
-    assert "quiddity labels" in drawn.read_text(errors="ignore")
-    assert "quiddity labels" not in plain.read_text(errors="ignore")
-    assert plain.stat().st_size < drawn.stat().st_size
+    # The text is what the size is made of, and it is in the PMI, not in a
+    # second shape bolted on beside the part.
+    assert bare.stat().st_size < drawn.stat().st_size
+    assert "quiddity labels" not in drawn.read_text(errors="ignore")
 
 
 def test_cli_explain_width_is_honoured(sample_step, tmp_path):
