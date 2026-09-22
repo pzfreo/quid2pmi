@@ -247,3 +247,19 @@ def test_a_pocket_points_at_its_mouth_not_a_wall_inside_it(pocketed):
         # held to. Judging this by the tolerance convert itself slides within
         # would only restate the precondition of the code under test.
         assert _distance_to(part, annotation.anchor) < 1e-6, annotation.label
+
+
+def test_a_pocket_reads_out_of_its_mouth_not_across_it(pocketed):
+    """Sliding the anchor to the rim left it carrying the normal of the wall it
+    came off, and at a rim every direction has a clear run -- a ray along a face
+    grazes it rather than entering -- so the sight test took that stale normal
+    and the leader lay flat across the opening."""
+    report, _ = pocketed
+    recesses = [
+        a for a in report.annotations if a.family == "section_recesses" and a.detail.get("mouth")
+    ]
+    assert recesses, "the fixture no longer has a recess that opens at one end"
+    for annotation in recesses:
+        axis = annotation.detail["axis"]
+        along = abs(sum(annotation.surface[i] * axis[i] for i in range(3)))
+        assert along > 0.99, f"{annotation.label} still faces across its mouth ({along:.3f})"
