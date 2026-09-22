@@ -197,3 +197,18 @@ def test_a_leader_arrives_along_the_surface_normal(converted):
         assert last is not None
         along = sum(last[i] * label.annotation.surface[i] for i in range(3))
         assert along == pytest.approx(1.0, abs=1e-6), label.annotation.label
+
+
+def test_a_hole_points_at_its_rim_not_down_the_bore(converted):
+    """The evidence view anchors halfway down a bore, where the leader vanishes
+    into the opening. A drawing points at the rim."""
+    report, _ = converted
+    holes = [a for a in report.annotations if a.family == "holes"]
+    assert holes, "the fixture no longer has holes"
+    at_mouth = [
+        a
+        for a in holes
+        if abs(sum((a.anchor[i] - a.detail["mouth"][i]) * a.detail["axis"][i] for i in range(3)))
+        < 1e-6
+    ]
+    assert len(at_mouth) > len(holes) // 2, f"only {len(at_mouth)} of {len(holes)} reached a rim"

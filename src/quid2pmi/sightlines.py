@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from OCP.BRepClass3d import BRepClass3d_SolidClassifier
 from OCP.gp import gp_Pnt
-from OCP.TopAbs import TopAbs_IN
+from OCP.TopAbs import TopAbs_IN, TopAbs_ON
 from OCP.TopoDS import TopoDS_Shape
 
 from .geometry import add, normalise, scale
@@ -57,6 +57,11 @@ class SightTester:
             if self._classifier.State() == TopAbs_IN:
                 return (index - 1) * step
         return self._reach
+
+    def on_surface(self, point: Vec, tolerance: float) -> bool:
+        """Whether ``point`` lies on the solid's boundary rather than in thin air."""
+        self._classifier.Perform(gp_Pnt(*point), tolerance)
+        return self._classifier.State() == TopAbs_ON
 
     def is_clear(self, origin: Vec, direction: Vec) -> bool:
         return self.clear_run(origin, direction) >= self._reach

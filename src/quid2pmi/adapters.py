@@ -211,7 +211,19 @@ def _hole(d: dict[str, Any]) -> Annotation | None:
     prose += "."
     if extras:
         prose += " Entry treatment: " + ", ".join(extras) + "."
-    return Annotation("holes", tuple(parts), loc, normal, d.get("diameter"), DIM_DIAMETER, prose)
+    return Annotation(
+        "holes",
+        tuple(parts),
+        loc,
+        normal,
+        d.get("diameter"),
+        DIM_DIAMETER,
+        prose,
+        # Kept so the leader can be brought back to the mouth: the evidence view
+        # anchors on the bore wall, which is halfway down a hole you cannot see
+        # into. See convert._at_the_mouth.
+        detail={"mouth": loc, "axis": axis} if axis else {"mouth": loc},
+    )
 
 
 def _boss(d: dict[str, Any]) -> Annotation | None:

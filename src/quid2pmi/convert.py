@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
+from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from quiddity import build_raw_recognition_result, import_step_geometry
 
 from .adapters import EXCLUDED_FAMILIES, FEATURE_FAMILIES, SUMMARY_FAMILIES, annotate
 from .evidence import annotate_from_evidence
-from .geometry import dot, normalise, snap_to_axis, sub
+from .geometry import add, dot, normalise, scale, snap_to_axis, sub
 from .layout import BoundingBox, layout
 from .model import Annotation, Vec
 from .sightlines import SightTester
@@ -121,6 +122,29 @@ def _drop_superseded(annotations: list[Annotation]) -> tuple[list[Annotation], i
     return kept, len(annotations) - len(kept)
 
 
+def _at_the_mouth(annotation: Annotation, on_part: Callable[[Vec], bool]) -> Annotation:
+    """Bring a hole's leader back to the rim it opens at.
+
+    The evidence view anchors on the bore wall, which is halfway down a hole: the
+    leader vanished into the opening and pointed at nothing a reader could find.
+    Sliding the anchor along the axis to the mouth plane keeps the side of the
+    bore recognition proved and puts the point on the rim, where a drawing puts
+    it.
+
+    Only when the rim is still material. A counterbore or spotface opens the
+    mouth out to a wider diameter, so the smaller bore's radius at that plane is
+    thin air -- on the flanged spool it left a Ø62 spotfaced hole pointing 4 mm
+    off the part.
+    """
+    axis = normalise(cast("Vec", annotation.detail.get("axis") or (0.0, 0.0, 0.0)))
+    mouth = annotation.detail.get("mouth")
+    if axis is None or not isinstance(mouth, tuple):
+        return annotation
+    along = dot(sub(mouth, annotation.anchor), axis)
+    moved = add(annotation.anchor, scale(axis, along))
+    return replace(annotation, anchor=moved) if on_part(moved) else annotation
+
+
 def _reading_directions(annotation: Annotation, box: BoundingBox) -> list[Vec]:
     """Where to stand to read this feature's label, best first.
 
@@ -198,11 +222,13 @@ def convert(
         for family, count in extra_unplaced.items():
             unplaced[family] = unplaced.get(family, 0) + count
 
-    annotations, superseded = _drop_superseded(annotations)
-
     say("choosing leader directions")
     box = _bounding_box(part)
     tester = SightTester(part.wrapped, box.diagonal * 4.0)
+
+    on_part = partial(tester.on_surface, tolerance=box.diagonal * 1e-6)
+    annotations = [_at_the_mouth(a, on_part) for a in annotations]
+    annotations, superseded = _drop_superseded(annotations)
     obstructed = 0
     sighted: list[Annotation] = []
     for annotation in annotations:
