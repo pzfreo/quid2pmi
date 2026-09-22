@@ -64,3 +64,27 @@ def test_labels_sit_off_their_anchors(sample_step, tmp_path):
     for label in payload["labels"]:
         moved = sum((label["origin"][i] - label["anchor"][i]) ** 2 for i in range(3)) ** 0.5
         assert moved > 0
+
+
+def test_a_leader_meets_a_sloped_face_square(sample_step, tmp_path):
+    """The read direction is snapped to a bounding-box axis, which throws away
+    the 45 degrees of a chamfer. Offsetting the label along the snapped axis and
+    then bending to the true normal put a kink in every such leader."""
+    import math
+
+    page = tmp_path / "bend.html"
+    convert(sample_step, tmp_path / "o.step", viewer=page, quiet=True)
+    payload = json.loads(
+        re.search(r"const DATA = (\{.*?\});\n", page.read_text(), re.S).group(1)
+    )
+
+    bent = [label for label in payload["labels"] if label["via"]]
+    assert bent, "no leader stands off the surface"
+    for label in bent:
+        anchor, via, origin = label["anchor"], label["via"][0], label["origin"]
+        into = [via[i] - anchor[i] for i in range(3)]
+        onward = [origin[i] - via[i] for i in range(3)]
+        cosine = sum(into[i] * onward[i] for i in range(3)) / (
+            math.dist(into, (0, 0, 0)) * math.dist(onward, (0, 0, 0))
+        )
+        assert cosine > 0.999, (label["cells"], cosine)

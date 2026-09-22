@@ -11,9 +11,9 @@ from quiddity import build_raw_recognition_result, import_step_geometry
 
 from .adapters import EXCLUDED_FAMILIES, FEATURE_FAMILIES, SUMMARY_FAMILIES, annotate
 from .evidence import annotate_from_evidence
-from .geometry import snap_to_axis
+from .geometry import dot, normalise, snap_to_axis, sub
 from .layout import BoundingBox, layout
-from .model import Annotation
+from .model import Annotation, Vec
 from .sightlines import SightTester
 from .step_pmi import build_document, write_step
 
@@ -121,6 +121,23 @@ def _drop_superseded(annotations: list[Annotation]) -> tuple[list[Annotation], i
     return kept, len(annotations) - len(kept)
 
 
+def _reading_directions(annotation: Annotation, box: BoundingBox) -> list[Vec]:
+    """Where to stand to read this feature's label, best first.
+
+    The face's own normal, when it faces away from the part -- a turned step is
+    read from the side it presents, not from along the lathe axis, and a leader
+    that arrives axially meets the cylinder edge-on. A bore's normal points into
+    the hole, which is no place to stand, so there the feature's own axis wins.
+    """
+    out: list[Vec] = []
+    outward = normalise(sub(annotation.anchor, box.centre))
+    if annotation.surface is not None and (outward is None or dot(annotation.surface, outward) > 0):
+        out.append(annotation.surface)
+    if annotation.normal is not None:
+        out.append(annotation.normal)
+    return out
+
+
 def _by_family(annotations: Sequence[Annotation]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for annotation in annotations:
@@ -192,7 +209,9 @@ def convert(
         # Test the direction the layout will actually use. The layout snaps a label
         # to one of the six bounding box faces, so sight-testing an unsnapped face
         # normal would clear a direction that is then never used.
-        preferred = [snap_to_axis(annotation.normal)] if annotation.normal is not None else []
+        preferred = [
+            snap_to_axis(direction) for direction in _reading_directions(annotation, box)
+        ]
         direction, clear = tester.choose(annotation.anchor, preferred)
         obstructed += 0 if clear else 1
         sighted.append(replace(annotation, normal=direction))

@@ -59,15 +59,22 @@ def _glb(doc: TDocStd_Document, deflection: float, destination: Path) -> bytes:
 def _adapt(annotation: Annotation, diagonal: float) -> ViewerAnnotation:
     """One recognised feature, in the viewer's vocabulary."""
     direction = annotation.normal or (0.0, 0.0, 1.0)
-    step = diagonal * STANDOFF
     x, y, z = annotation.anchor
-    origin: Vec = (x + direction[0] * step, y + direction[1] * step, z + direction[2] * step)
-    via: tuple[Vec, ...] = ()
-    # Only where the surface faces the way the label is read from: a bore wall's
-    # normal points into the hole, and a leader standing off along it would have
-    # to come back out through the material.
+
+    # Stand the label off along the surface itself where that faces the way the
+    # label is read from, so the leader is straight and meets the face square. The
+    # read direction is snapped to an axis, which throws away the 45 degrees of a
+    # chamfer: offsetting along the snapped one and bending to the true one put a
+    # kink in every leader that landed on a sloped face. A bore is the exception
+    # -- its normal points into the hole, which is no place to put a label.
     surface = annotation.surface
     if surface is not None and sum(surface[i] * direction[i] for i in range(3)) > 0.2:
+        direction = surface
+
+    step = diagonal * STANDOFF
+    origin: Vec = (x + direction[0] * step, y + direction[1] * step, z + direction[2] * step)
+    via: tuple[Vec, ...] = ()
+    if direction is surface:
         out = diagonal * STUB
         via = ((x + surface[0] * out, y + surface[1] * out, z + surface[2] * out),)
     return ViewerAnnotation(
