@@ -17,6 +17,7 @@ from OCP.gp import gp_Pnt
 from quiddity import import_step_geometry
 
 from quid2pmi import convert
+from quid2pmi.convert import MOUTH_ROUNDING
 from quid2pmi.layout import BoundingBox, layout
 from quid2pmi.model import DIM_ANGLE, DIM_THICKNESS
 from quid2pmi.sightlines import SightTester
@@ -230,16 +231,19 @@ def test_a_pocket_points_at_its_mouth_not_a_wall_inside_it(pocketed):
         a for a in report.annotations if a.family == "section_recesses" and a.detail.get("mouth")
     ]
     assert recesses, "the fixture no longer has a recess that opens at one end"
-    at_mouth = [
-        a
-        for a in recesses
-        if abs(sum((a.anchor[i] - a.detail["mouth"][i]) * a.detail["axis"][i] for i in range(3)))
-        < 1e-6
-    ]
-    reached = f"only {len(at_mouth)} of {len(recesses)} reached a mouth"
-    assert len(at_mouth) > len(recesses) // 2, reached
-    # The slide is allowed to land on a rim, an edge between two faces, so judge
-    # it by the tolerance convert itself accepts the moved point within.
-    tolerance = _box(part).diagonal * 1e-6
     for annotation in recesses:
-        assert _distance_to(part, annotation.anchor) < tolerance, annotation.label
+        off = abs(
+            sum(
+                (annotation.anchor[i] - annotation.detail["mouth"][i])
+                * annotation.detail["axis"][i]
+                for i in range(3)
+            )
+        )
+        # Every one, not a majority: the stated plane is quantised to three
+        # decimals, and convert refines it from the feature's own faces, so the
+        # anchor lands within that rounding of what the record said.
+        assert off <= MOUTH_ROUNDING, f"{annotation.label} is still {off:.4f} from its mouth"
+        # And on the part outright, at the same 1e-6 every other leader tip is
+        # held to. Judging this by the tolerance convert itself slides within
+        # would only restate the precondition of the code under test.
+        assert _distance_to(part, annotation.anchor) < 1e-6, annotation.label

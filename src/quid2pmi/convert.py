@@ -122,6 +122,36 @@ def _drop_superseded(annotations: list[Annotation]) -> tuple[list[Annotation], i
     return kept, len(annotations) - len(kept)
 
 
+#: How far a record's stated mouth plane can sit from the real one. A section
+#: recess quantises two terms of it to three decimals -- the run interval, and
+#: every component of the frame origin it is measured from -- so the axial
+#: coordinate can be 5e-4 + sqrt(3) * 5e-4 out, and corpus part 10170 already
+#: reaches 1.000e-3 of that on an axis-aligned run. A hole states its location
+#: at eight decimals and never needs any of this.
+MOUTH_ROUNDING = 2e-3
+
+
+def _faces_reach(annotation: Annotation, axis: Vec, towards: float) -> float | None:
+    """How far the feature's own faces reach along ``axis``, measured from the anchor.
+
+    A pocket's walls run from its floor to its mouth, so their far edge in the
+    direction the anchor is travelling is the mouth plane itself, at the precision
+    of the geometry rather than of the record.
+    """
+    offsets: list[float] = []
+    for face in annotation.faces:
+        try:
+            vertices = list(face.vertices())
+        except Exception:  # pragma: no cover - a face with no usable topology
+            return None
+        for vertex in vertices:
+            point = (float(vertex.X), float(vertex.Y), float(vertex.Z))
+            offsets.append(dot(sub(point, annotation.anchor), axis))
+    if not offsets:
+        return None
+    return max(offsets) if towards > 0.0 else min(offsets)
+
+
 def _at_the_mouth(annotation: Annotation, on_part: Callable[[Vec], bool]) -> Annotation:
     """Bring a hole's leader back to the rim it opens at.
 
@@ -141,6 +171,17 @@ def _at_the_mouth(annotation: Annotation, on_part: Callable[[Vec], bool]) -> Ann
     if axis is None or not isinstance(mouth, tuple):
         return annotation
     along = dot(sub(mouth, annotation.anchor), axis)
+    # A swept recess states its mouth as a run_interval quantised to three
+    # decimals, so the reconstructed plane can be half a step out -- an order of
+    # magnitude more than on_part allows, which silently left 21 of the corpus's
+    # 102 pockets anchored mid-depth. The feature's own faces reach the real
+    # plane, so prefer their coordinate when it is no further than that rounding
+    # from the stated one. Further off than that is a different plane rather than
+    # a rounding of this one, and the record's answer stands: that is what keeps
+    # a spotfaced bore from being dragged to a rim made of thin air.
+    reached = _faces_reach(annotation, axis, along)
+    if reached is not None and abs(reached - along) <= MOUTH_ROUNDING:
+        along = reached
     moved = add(annotation.anchor, scale(axis, along))
     return replace(annotation, anchor=moved) if on_part(moved) else annotation
 
