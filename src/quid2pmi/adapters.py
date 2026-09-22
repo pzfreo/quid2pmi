@@ -622,6 +622,25 @@ def _section_recess(d: dict[str, Any]) -> Annotation | None:
         ]
         if conditions:
             prose += f". Ends: {', '.join(conditions)}"
+    # A pocket has one open end, and that is the plane a drawing points at.
+    # Recognition proves the walls of the socket instead, so without the mouth
+    # the leader lands on a wall halfway down a hex pocket you cannot see into --
+    # the same defect convert._at_the_mouth was written to bring a hole back from.
+    mouth: Vec | None = None
+    outward: Vec | None = None
+    run_axis = as_point(frame.get("run"))
+    if isinstance(ends, dict) and run_axis is not None and isinstance(run, (list, tuple)):
+        open_ends = [
+            index
+            for index, name in enumerate(("low", "high"))
+            if isinstance(ends.get(name), dict) and ends[name].get("condition") == "open"
+        ]
+        if len(open_ends) == 1:
+            edge = float(run[open_ends[0]])
+            mouth = _frame_anchor(frame, (edge, edge), boundary)
+            # The run points from the low end to the high one; a label reads from
+            # outside whichever end the recess opens at.
+            outward = normalise(scale(run_axis, 1.0 if open_ends[0] else -1.0))
     # The run length is the one size a swept recess has, and it was already being
     # printed in the callout. Giving it a type as well makes the annotation
     # machine-readable rather than a picture of text with a leader.
@@ -629,10 +648,11 @@ def _section_recess(d: dict[str, Any]) -> Annotation | None:
         "section_recesses",
         tuple(text),
         anchor,
-        None,
+        outward,
         length,
         DIM_LENGTH if length is not None else None,
         prose + ".",
+        detail={"mouth": mouth, "axis": run_axis} if mouth is not None else {},
     )
 
 

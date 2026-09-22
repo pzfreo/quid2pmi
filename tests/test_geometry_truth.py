@@ -37,6 +37,13 @@ def converted(spool, tmp_path_factory):
     return convert(spool, output, quiet=True), import_step_geometry(str(spool))
 
 
+@pytest.fixture(scope="module")
+def pocketed(sample_step, tmp_path_factory):
+    """A part with swept recesses: the spool is turned and has none."""
+    output = tmp_path_factory.mktemp("truth") / "pockets.step"
+    return convert(sample_step, output, quiet=True), import_step_geometry(str(sample_step))
+
+
 def _distance_to(part, point) -> float:
     vertex = BRepBuilderAPI_MakeVertex(gp_Pnt(*point)).Vertex()
     measure = BRepExtrema_DistShapeShape(vertex, part.wrapped)
@@ -212,3 +219,27 @@ def test_a_hole_points_at_its_rim_not_down_the_bore(converted):
         < 1e-6
     ]
     assert len(at_mouth) > len(holes) // 2, f"only {len(at_mouth)} of {len(holes)} reached a rim"
+
+
+def test_a_pocket_points_at_its_mouth_not_a_wall_inside_it(pocketed):
+    """Recognition proves a recess's walls, so the leader landed mid-depth on one
+    of them: on a printed frame's hex pockets it came out of a wall 0.95 under the
+    surface, where a drawing points at the rim of the socket."""
+    report, part = pocketed
+    recesses = [
+        a for a in report.annotations if a.family == "section_recesses" and a.detail.get("mouth")
+    ]
+    assert recesses, "the fixture no longer has a recess that opens at one end"
+    at_mouth = [
+        a
+        for a in recesses
+        if abs(sum((a.anchor[i] - a.detail["mouth"][i]) * a.detail["axis"][i] for i in range(3)))
+        < 1e-6
+    ]
+    reached = f"only {len(at_mouth)} of {len(recesses)} reached a mouth"
+    assert len(at_mouth) > len(recesses) // 2, reached
+    # The slide is allowed to land on a rim, an edge between two faces, so judge
+    # it by the tolerance convert itself accepts the moved point within.
+    tolerance = _box(part).diagonal * 1e-6
+    for annotation in recesses:
+        assert _distance_to(part, annotation.anchor) < tolerance, annotation.label
