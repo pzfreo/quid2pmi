@@ -59,12 +59,11 @@ def test_table_summary_draws_a_swatch_per_family(report, capsys):
     assert written.count(SWATCH) == len(report.counts)
 
 
-def test_summary_states_the_totals_and_the_profile(report, capsys):
+def test_summary_states_the_totals(report, capsys):
     _terminal_reporter().summary(report)
     written = capsys.readouterr().err
     assert str(report.total) in written
     assert str(report.coloured) in written
-    assert report.profile in written
     assert report.output.name in written
 
 

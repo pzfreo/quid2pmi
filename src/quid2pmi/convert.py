@@ -14,7 +14,6 @@ from .evidence import annotate_from_evidence
 from .geometry import snap_to_axis
 from .layout import BoundingBox, layout
 from .model import Annotation
-from .profiles import DEFAULT_PROFILE, ViewerProfile
 from .sightlines import SightTester
 from .step_pmi import build_document, write_step
 
@@ -36,8 +35,6 @@ class ConversionReport:
     attached: int
     #: Faces coloured by their feature family.
     coloured: int
-    #: The viewer compatibility profile the output was written for.
-    profile: str
     annotations: tuple[Annotation, ...]
 
     @property
@@ -55,7 +52,6 @@ class ConversionReport:
             "obstructed": self.obstructed,
             "attached": self.attached,
             "coloured": self.coloured,
-            "profile": self.profile,
             "labels": [
                 {
                     "family": a.family,
@@ -116,7 +112,6 @@ def convert(
     leaders: bool = True,
     explain: bool = False,
     colours: bool = True,
-    profile: ViewerProfile = DEFAULT_PROFILE,
     viewer: Path | None = None,
     quiet: bool = False,
     progress: Callable[[str], None] | None = None,
@@ -181,7 +176,6 @@ def convert(
         leaders=leaders,
         colours=colours,
         explain_names=explain,
-        profile=profile,
     )
     say("writing STEP")
     write_step(doc, str(output), quiet=quiet)
@@ -217,6 +211,5 @@ def convert(
         obstructed,
         attached,
         coloured,
-        profile.name,
         kept,
     )

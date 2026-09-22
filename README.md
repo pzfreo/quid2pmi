@@ -12,7 +12,7 @@ in which every recognised feature is made visible:
 * the full inventory, including a plain-words explanation of every feature, is available as
   **JSON** alongside.
 
-Open the result in [CAD Assistant](https://www.opencascade.com/products/cad-assistant/).
+Open the result with `--viewer`, or in any tool that reads AP242 PMI.
 
 The original geometry is written unchanged; nothing is added to or removed from the solid.
 
@@ -59,7 +59,7 @@ its faces are given in the STEP file**, so the terminal and the viewer agree:
   ■■ turned steps      3
   ■■ fillets           2
 
-  60 annotations  58 faces coloured  409.5 kB  [cad-assistant]
+  60 annotations  58 faces coloured  409.5 kB
   /path/to/part-pmi.step
 ```
 
@@ -96,7 +96,7 @@ quid2pmi --completion bash > /usr/local/etc/bash_completion.d/quid2pmi
 quid2pmi --completion fish > ~/.config/fish/completions/quid2pmi.fish
 ```
 
-Completes options, family names, profiles and `.step` paths. The scripts are generated from
+Completes options, family names and `.step` paths. The scripts are generated from
 the argument parser, so a new flag becomes completable as soon as it is added rather than when
 someone remembers to update a checked-in script.
 
@@ -142,26 +142,22 @@ the NIST reference that is the only structural difference. But `tools/savedview`
 `CAMERA_MODEL_D3` wired as the NIST files wire it, OCCT's reader confirms it reads back, and
 CAD Assistant draws no more than before. So the saved view was not the explanation either.
 
-### Viewer profiles
+### One output, standard-correct
 
-One of the choices above is a workaround for one consumer, not a property of the standard, so
-it lives behind `--profile`:
+There is nothing to configure. Every file is written as AP242 says it should be, including
+`Size_Thickness` for the six families that carry a thickness-like size -- which is what the NIST
+PMI reference files use.
 
-| | `cad-assistant` (default) | `ap242` |
-| --- | --- | --- |
-| thickness-like sizes | `Size_CurveLength` | `Size_Thickness` |
+That was not always true. `Size_Thickness` makes OCCT write
+`DIMENSIONAL_SIZE(...,'thickness')`, and importing that **segfaults CAD Assistant**. Measured on
+one part with sixteen chamfers, holding everything else constant: `'thickness'` crashes, while
+`'curve length'`, `'radius'` and `ANGULAR_SIZE` all open. So thickness was written as
+`Size_CurveLength` instead, behind a `--profile` switch.
 
-`ap242` is the standard-correct output. Use it for a viewer that does not crash on a thickness
-dimension. It has not been verified against such a viewer here --
-only CAD Assistant and FreeCAD were available, and both are built on OCCT.
-
-**A dimension named `thickness` crashes CAD Assistant.** `Size_Thickness` makes OCCT write
-`DIMENSIONAL_SIZE(...,'thickness')`, and importing that segfaults CAD Assistant. Measured on one
-part with sixteen chamfers, holding everything else constant: `'thickness'` crashes, while
-`'curve length'`, `'radius'` and `ANGULAR_SIZE` all open. Six families carry a thickness-like
-size, so this is not a corner case. `Size_Thickness` is never used; thickness and length both
-map to `Size_CurveLength`, both being linear sizes of a single feature. A test asserts the
-string never appears in output.
+The switch is gone. It was a workaround for one viewer's bug, that viewer draws no graphical PMI
+however it is written, and carrying a profile mechanism for a single boolean cost more than it
+returned. A downstream tool now gets the semantically correct type. If CAD Assistant matters to
+you, avoid the six families that produce one, or open the file somewhere else.
 
 ### Explaining what was found
 
@@ -192,7 +188,6 @@ STEP file nothing: the 60-feature spool is 0.4 MB either way.
 | `--no-leaders` | omit leader lines |
 | `-e, --explain` | put the plain-words explanation in each feature's model-tree name |
 | `--no-colour` | do not colour each feature's faces by family |
-| `--profile` | viewer to write for: `cad-assistant` (default) or `ap242` |
 | `--json` | also write the annotation list as JSON |
 | `-q, --quiet` | suppress the summary |
 | `-v, --verbose` | also show the STEP writer's own progress output |

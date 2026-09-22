@@ -11,7 +11,6 @@ from . import __version__
 from .adapters import FEATURE_FAMILIES, SUMMARY_FAMILIES
 from .completion import SHELLS, generate
 from .convert import convert, resolve_families
-from .profiles import PROFILES, resolve_profile
 from .status import Reporter
 
 
@@ -20,7 +19,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="quid2pmi",
         description=(
             "Recognise features in a STEP file with Quiddity and write a new STEP file "
-            "carrying them as AP242 PMI annotations, for viewing in CAD Assistant."
+            "carrying them as AP242 PMI annotations."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
@@ -73,13 +72,6 @@ def build_parser() -> argparse.ArgumentParser:
         dest="no_colour",
         action="store_true",
         help="do not colour each feature's faces by family",
-    )
-    parser.add_argument(
-        "--profile",
-        choices=sorted(PROFILES),
-        default="cad-assistant",
-        help="viewer to write for: "
-        + "; ".join(f"{name} -- {p.summary}" for name, p in sorted(PROFILES.items())),
     )
     parser.add_argument(
         "--viewer",
@@ -139,12 +131,6 @@ def main(argv: list[str] | None = None) -> int:
         reporter.failure(str(exc))
         return 2
 
-    try:
-        viewer = resolve_profile(args.profile)
-    except ValueError as exc:
-        reporter.failure(str(exc))
-        return 2
-
     stage: dict[str, object] = {}
 
     def phase(description: str) -> None:
@@ -165,7 +151,6 @@ def main(argv: list[str] | None = None) -> int:
                 leaders=not args.no_leaders,
                 explain=args.explain,
                 colours=not args.no_colour,
-                profile=viewer,
                 viewer=args.viewer,
                 quiet=not args.verbose,
                 progress=phase,

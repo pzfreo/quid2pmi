@@ -7,7 +7,6 @@ import pytest
 from quid2pmi.adapters import FEATURE_FAMILIES
 from quid2pmi.cli import build_parser, main
 from quid2pmi.completion import SHELLS, generate
-from quid2pmi.profiles import PROFILES
 
 
 @pytest.fixture
@@ -36,10 +35,8 @@ def test_scripts_offer_every_option_the_parser_accepts(parser, shell):
 
 
 @pytest.mark.parametrize("shell", SHELLS)
-def test_scripts_offer_the_profiles_and_families(parser, shell):
+def test_scripts_offer_the_family_names(parser, shell):
     script = generate(parser, shell, list(FEATURE_FAMILIES))
-    for name in PROFILES:
-        assert name in script
     assert "holes" in script
     assert "section_recesses" in script
 

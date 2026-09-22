@@ -79,7 +79,9 @@ def build_scene(
     """A viewer scene for a part and the features recognised in it."""
     with tempfile.TemporaryDirectory() as tmp:
         glb = _glb(doc, (box.diagonal or 1.0) / 2000, Path(tmp) / "part.glb")
-    scene = Scene(name, glb, box.min, box.max)
+    # Say so on the page: these are inferences from the geometry, not dimensions
+    # and tolerances an engineer specified, and must not be read as though they were.
+    scene = Scene(name, glb, box.min, box.max, origin="recognised features")
     scene.annotations.extend(_adapt(a, box.diagonal or 1.0) for a in annotations)
     return scene
 

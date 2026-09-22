@@ -48,7 +48,6 @@ from .model import (
     Annotation,
 )
 from .palette import colour_for
-from .profiles import DEFAULT_PROFILE, ViewerProfile
 
 # Every annotation quid2pmi writes describes one feature, so it is attached to a
 # single shape label. AP242 location dimensions are measured *between* two shapes,
@@ -62,24 +61,9 @@ DIMENSION_TYPES: dict[str, Any] = {
     DIM_ANGLE: XCAFDimTolObjects_DimensionType_Size_Angular,
 }
 
-#: Substituted for Size_Thickness when a profile asks to avoid it. Both are linear
-#: sizes of a single feature, so the value keeps its meaning.
-THICKNESS_SUBSTITUTE = XCAFDimTolObjects_DimensionType_Size_CurveLength
-
-#: The STEP name Size_Thickness produces, which segfaults CAD Assistant's importer.
-FATAL_DIMENSION_NAME = "thickness"
-
-
-def dimension_type(kind: str | None, profile: ViewerProfile) -> Any | None:
-    """The XCAF dimension type for a semantic kind under ``profile``."""
-    if kind is None:
-        return None
-    chosen = DIMENSION_TYPES.get(kind)
-    if chosen is None:
-        return None
-    if kind == DIM_THICKNESS and profile.avoid_thickness:
-        return THICKNESS_SUBSTITUTE
-    return chosen
+def dimension_type(kind: str | None) -> Any | None:
+    """The XCAF dimension type for a semantic kind."""
+    return None if kind is None else DIMENSION_TYPES.get(kind)
 
 
 #: Colour of the label text added as geometry.
@@ -149,7 +133,6 @@ def build_document(
     leaders: bool = True,
     colours: bool = True,
     explain_names: bool = False,
-    profile: ViewerProfile = DEFAULT_PROFILE,
 ) -> tuple[TDocStd_Document, list[PlacedLabel], int]:
     """Assemble an XCAF document containing ``shape`` and one dimension per label.
 
@@ -218,7 +201,7 @@ def build_document(
             continue
         written.append(label)
         obj = XCAFDimTolObjects_DimensionObject()
-        kind = dimension_type(annotation.dimension, profile)
+        kind = dimension_type(annotation.dimension)
         value = annotation.value if kind is not None else None
         obj.SetType(kind if value is not None else PRESENTATION_ONLY)
         if value is not None:

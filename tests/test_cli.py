@@ -67,10 +67,13 @@ def test_cli_rejects_an_unknown_profile(sample_step, capsys):
         main([str(sample_step), "--profile", "nonesuch"])
 
 
-def test_cli_ap242_profile_writes_thickness(sample_step, tmp_path):
+def test_cli_has_no_profile_option_left(sample_step, tmp_path):
+    """The output is standard-correct AP242 and there is nothing to choose."""
     out = tmp_path / "strict.step"
-    assert main([str(sample_step), "-o", str(out), "-q", "--profile", "ap242"]) == 0
+    assert main([str(sample_step), "-o", str(out), "-q"]) == 0
     assert out.is_file()
+    with pytest.raises(SystemExit):
+        main([str(sample_step), "-o", str(out), "-q", "--profile", "ap242"])
 
 
 def test_cli_viewer_flag_writes_a_page(sample_step, tmp_path):

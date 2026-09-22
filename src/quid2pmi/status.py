@@ -106,7 +106,6 @@ class Reporter:
                 (f"{report.coloured}", "bold"),
                 (" faces coloured  ", "dim"),
                 (f"{_si(size)}", "bold"),
-                (f"  [{report.profile}]", "dim"),
             )
         )
         # soft_wrap so a long path is left to the terminal instead of being
@@ -133,7 +132,7 @@ class Reporter:
     def _plain(self, report: ConversionReport) -> None:
         print(
             f"{report.output}: {report.total} annotations, "
-            f"{report.coloured} faces coloured [{report.profile}]",
+            f"{report.coloured} faces coloured",
             file=self.console.file,
         )
         for family, count in sorted(report.counts.items()):
