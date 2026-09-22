@@ -9,6 +9,7 @@ the record as unplaced when it cannot find a point.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Iterator
 from dataclasses import replace
 from typing import Any
@@ -714,6 +715,65 @@ def _hole_callout(d: dict[str, Any]) -> str:
     return " ".join(parts)
 
 
+def _across_flats(profile: Any) -> float | None:
+    """The size across a closed straight-sided profile's flats, when it has one.
+
+    Twice the smallest distance from the centroid to an edge. A hex pocket is
+    called out across its flats -- the size of key that fits it -- and the
+    record states the profile rather than that size.
+    """
+    if not isinstance(profile, dict) or profile.get("closure") != "closed":
+        return None
+    boundary = profile.get("boundary")
+    if not isinstance(boundary, (list, tuple)) or len(boundary) < 3:
+        return None
+    flat = [
+        (float(vertex["point"][0]), float(vertex["point"][1]))
+        for vertex in boundary
+        # A bulge means that edge is an arc, and an arc has no flat.
+        if isinstance(vertex, dict) and not vertex.get("bulge")
+    ]
+    if len(flat) != len(boundary):
+        return None
+    cu = sum(u for u, _ in flat) / len(flat)
+    cv = sum(v for _, v in flat) / len(flat)
+    spans, edges = [], []
+    for (u1, v1), (u2, v2) in zip(flat, (*flat[1:], flat[0]), strict=True):
+        edge = math.hypot(u2 - u1, v2 - v1)
+        if edge == 0.0:
+            return None
+        edges.append(edge)
+        spans.append(2.0 * abs((u2 - u1) * (cv - v1) - (v2 - v1) * (cu - u1)) / edge)
+    # Only a regular polygon has one size across flats, and quiddity names a
+    # section hexagonal by counting its corners: an L-shaped pocket has six
+    # straight sides too, and no size across flats to state.
+    if any(max(values) - min(values) > 0.01 * max(values) for values in (spans, edges)):
+        return None
+    return min(spans)
+
+
+def _section_recess_callout(d: dict[str, Any]) -> tuple[str, str]:
+    """A swept recess written as its cross-section, then how far it is swept.
+
+    The shape is the whole point of one of these: a hex socket and a round bore
+    of the same depth are different features, and a callout naming neither is
+    only a leader with a number on it.
+    """
+    geom = d["geometry"]
+    low, high = geom["run_interval"]
+    run = float(high) - float(low)
+    kind = str(d["classification"]["feature_kind"]).replace("_", " ")
+    shape = str(d["classification"].get("section_shape") or "")
+    # A pocket is swept down from the face it opens on, so its run is a depth.
+    # A channel or a passage runs along the part, so its run is a length.
+    size = f"{DEPTH}{num(run)}" if kind == "pocket" else f"{num(run)} long"
+    across = _across_flats(geom.get("profile")) if shape == "hexagonal" else None
+    if across is not None:
+        size = f"{num(across)} A/F {size}"
+    word = f"{shape} {kind}" if shape and shape != "general" else kind
+    return size, word
+
+
 #: How each family reads as a drawing callout: the value, then the feature word.
 #: Written separately from the terse STEP label because a drawing leads with the
 #: size and says what the feature is quietly, where a STEP annotation name has to
@@ -768,10 +828,7 @@ _CALLOUTS: dict[str, Callable[[dict[str, Any]], tuple[str, str]]] = {
         "countersink",
     ),
     "oriented_slots": lambda d: (f"{num(d['width'])} wide", "oriented slot"),
-    "section_recesses": lambda d: (
-        f"{num(d['geometry']['run_interval'][1] - d['geometry']['run_interval'][0])} long",
-        str(d["classification"]["feature_kind"]).replace("_", " "),
-    ),
+    "section_recesses": _section_recess_callout,
 }
 
 

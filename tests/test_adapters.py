@@ -1,5 +1,7 @@
 """The record adapters: label wording, anchors and semantic values."""
 
+import math
+
 from quid2pmi.adapters import DIAMETER_SIGN, annotate, generic_annotation, num
 from quid2pmi.model import DIM_DIAMETER, DIM_RADIUS
 
@@ -299,3 +301,79 @@ def test_a_section_recess_carries_its_run_length():
     (annotation,), _ = annotate(result, {"section_recesses"})
     assert annotation.value == 12.0
     assert annotation.dimension == DIM_LENGTH
+
+
+def _hex_pocket(across_flats=4.3, depth=1.9):
+    """A regular hexagonal profile of the given size across flats."""
+    radius = across_flats / math.sqrt(3.0)
+    boundary = [
+        {
+            "point": [
+                radius * math.cos(math.radians(30.0 + 60.0 * corner)),
+                radius * math.sin(math.radians(30.0 + 60.0 * corner)),
+            ],
+            "bulge": 0.0,
+        }
+        for corner in range(6)
+    ]
+    return {
+        "geometry": {
+            "run_interval": [-depth, 0.0],
+            "profile": {"closure": "closed", "boundary": boundary},
+        },
+        "classification": {"feature_kind": "pocket", "section_shape": "hexagonal"},
+    }
+
+
+def test_a_hex_pocket_is_called_out_across_its_flats():
+    """It read as "1.9 long pocket": the same callout a round bore would get,
+    with the sweep length standing in for the size of the socket."""
+    from quid2pmi.adapters import callout_for
+
+    assert callout_for("section_recesses", _hex_pocket(), ("POCKET HEXAGONAL",)) == (
+        "4.3 A/F ↧1.9",
+        "hexagonal pocket",
+    )
+
+
+def test_a_channel_keeps_its_run_as_a_length():
+    """A channel runs along the part, so its run is not a depth."""
+    from quid2pmi.adapters import callout_for
+
+    record = {
+        "geometry": {
+            "run_interval": [2.0, 14.0],
+            "profile": {
+                "closure": "open",
+                "boundary": [{"point": [0.4, -3.7], "bulge": -0.28}, {"point": [0.4, 3.7]}],
+            },
+        },
+        "classification": {"feature_kind": "channel", "section_shape": "circular"},
+    }
+    assert callout_for("section_recesses", record, ("CHANNEL",)) == ("12 long", "circular channel")
+
+
+def test_an_arc_sided_profile_has_no_size_across_flats():
+    from quid2pmi.adapters import _across_flats
+
+    boundary = [{"point": [1.0, 0.0], "bulge": 0.5}, {"point": [-1.0, 0.0], "bulge": 0.5}]
+    assert _across_flats({"closure": "closed", "boundary": boundary}) is None
+
+
+def test_an_irregular_six_sided_pocket_has_no_size_across_flats():
+    """quiddity calls a section hexagonal by counting corners, so an L-shaped
+    pocket arrives as one. Claiming a size across its flats invents a dimension."""
+    from quid2pmi.adapters import callout_for
+
+    corners = [(0, 0), (10, 0), (10, 3), (4, 3), (4, 8), (0, 8)]
+    record = {
+        "geometry": {
+            "run_interval": [-2.0, 0.0],
+            "profile": {
+                "closure": "closed",
+                "boundary": [{"point": list(c), "bulge": 0.0} for c in corners],
+            },
+        },
+        "classification": {"feature_kind": "pocket", "section_shape": "hexagonal"},
+    }
+    assert callout_for("section_recesses", record, ("POCKET",)) == ("↧2", "hexagonal pocket")
