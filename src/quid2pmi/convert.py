@@ -183,7 +183,16 @@ def _at_the_mouth(annotation: Annotation, on_part: Callable[[Vec], bool]) -> Ann
     if reached is not None and abs(reached - along) <= MOUTH_ROUNDING:
         along = reached
     moved = add(annotation.anchor, scale(axis, along))
-    return replace(annotation, anchor=moved) if on_part(moved) else annotation
+    if not on_part(moved):
+        return annotation
+    # The anchor sits on the mouth plane now, not on the wall it came off, so the
+    # surface normal it still carried belongs to a face it has left. That is what
+    # sent a hex pocket's leader flat across its own opening: at a rim every
+    # direction has a clear run, because a ray along a face grazes it rather than
+    # entering it, so the sight test accepted the stale wall normal without
+    # complaint. The plane the anchor has arrived on faces the way it travelled.
+    facing = normalise(scale(axis, 1.0 if along > 0.0 else -1.0)) if along else annotation.surface
+    return replace(annotation, anchor=moved, surface=facing)
 
 
 def _facing_out(annotation: Annotation, tester: SightTester) -> Annotation:
