@@ -49,10 +49,12 @@ from .model import (
 )
 from .palette import colour_for
 
-# Every annotation quid2pmi writes describes one feature, so it is attached to a
-# single shape label. AP242 location dimensions are measured *between* two shapes,
-# and OCCT's AP242 writer dereferences the missing second reference and crashes --
-# so only size dimensions, and the presentation-only type, are used here.
+# Every annotation quid2pmi writes describes one feature, attached to a single
+# shape label. An AP242 *location* dimension is measured between two shapes, and
+# there is no second shape to name, so only size dimensions and the
+# presentation-only type are used here. (Writing one does not crash OCCT --
+# Location_LinearDistance is clean; see reports/README.md. It is simply not what
+# a one-sided annotation means.)
 DIMENSION_TYPES: dict[str, Any] = {
     DIM_DIAMETER: XCAFDimTolObjects_DimensionType_Size_Diameter,
     DIM_RADIUS: XCAFDimTolObjects_DimensionType_Size_Radius,

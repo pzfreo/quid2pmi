@@ -271,3 +271,31 @@ def test_every_annotation_gets_a_callout(sample_step, tmp_path):
     for annotation in report.annotations:
         assert annotation.callout, annotation.family
         assert annotation.callout[0]
+
+
+def test_a_section_recess_carries_its_run_length():
+    """The length was in the callout but not in the annotation, so a recess
+    reached the file as a picture of text with a leader and no readable value."""
+    from quid2pmi.model import DIM_LENGTH
+
+    result = FakeResult(
+        section_recesses=[
+            Rec(
+                {
+                    "geometry": {
+                        "frame": {
+                            "origin": [0.0, 0.0, 0.0],
+                            "run": [0.0, 0.0, 1.0],
+                            "u": [1.0, 0.0, 0.0],
+                            "v": [0.0, 1.0, 0.0],
+                        },
+                        "run_interval": [2.0, 14.0],
+                    },
+                    "classification": {"feature_kind": "channel", "section_shape": "rectangular"},
+                }
+            )
+        ]
+    )
+    (annotation,), _ = annotate(result, {"section_recesses"})
+    assert annotation.value == 12.0
+    assert annotation.dimension == DIM_LENGTH

@@ -609,7 +609,18 @@ def _section_recess(d: dict[str, Any]) -> Annotation | None:
         ]
         if conditions:
             prose += f". Ends: {', '.join(conditions)}"
-    return Annotation("section_recesses", tuple(text), anchor, None, explanation=prose + ".")
+    # The run length is the one size a swept recess has, and it was already being
+    # printed in the callout. Giving it a type as well makes the annotation
+    # machine-readable rather than a picture of text with a leader.
+    return Annotation(
+        "section_recesses",
+        tuple(text),
+        anchor,
+        None,
+        length,
+        DIM_LENGTH if length is not None else None,
+        prose + ".",
+    )
 
 
 def _bolt_circle(d: dict[str, Any]) -> Annotation | None:
