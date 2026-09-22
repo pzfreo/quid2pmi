@@ -96,10 +96,12 @@ def annotate_from_evidence(
                 family, (singular(family).upper(),), anchor
             )
         if anchor is not None:
+            at_surface = _normal_at(face, anchor)
             made = replace(
                 made,
                 anchor=anchor,
-                normal=made.normal or _normal_at(face, anchor),
+                normal=made.normal or at_surface,
+                surface=at_surface,
             )
         annotations.append(
             replace(made, faces=faces, callout=callout_for(family, payload, made.text))

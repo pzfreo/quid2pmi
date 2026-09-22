@@ -32,6 +32,11 @@ from .palette import colour_for
 #: because the page pushes labels apart on screen rather than in the model.
 STANDOFF = 0.055
 
+#: How far the leader stands off the surface before turning, as a share of the
+#: diagonal. The last leg runs along the part's own normal, so the leader meets a
+#: bore wall radially rather than at whatever angle the label ended up at.
+STUB = 0.012
+
 
 def _hex(family: str) -> str:
     red, green, blue = colour_for(family)
@@ -57,6 +62,14 @@ def _adapt(annotation: Annotation, diagonal: float) -> ViewerAnnotation:
     step = diagonal * STANDOFF
     x, y, z = annotation.anchor
     origin: Vec = (x + direction[0] * step, y + direction[1] * step, z + direction[2] * step)
+    via: tuple[Vec, ...] = ()
+    # Only where the surface faces the way the label is read from: a bore wall's
+    # normal points into the hole, and a leader standing off along it would have
+    # to come back out through the material.
+    surface = annotation.surface
+    if surface is not None and sum(surface[i] * direction[i] for i in range(3)) > 0.2:
+        out = diagonal * STUB
+        via = ((x + surface[0] * out, y + surface[1] * out, z + surface[2] * out),)
     return ViewerAnnotation(
         kind="dimension",
         # The drawing callout where the adapter produced one: the page draws text,
@@ -64,6 +77,7 @@ def _adapt(annotation: Annotation, diagonal: float) -> ViewerAnnotation:
         cells=annotation.callout or annotation.text,
         anchor=annotation.anchor,
         origin=origin,
+        via=via,
         group=annotation.family,
         detail=annotation.explanation,
         value=annotation.value,

@@ -21,6 +21,10 @@ LINE_PITCH = 1.45
 STANDOFF_FRACTION = 0.10
 #: Nominal glyph advance as a fraction of text height, for collision boxes.
 GLYPH_WIDTH = 0.62
+#: How far the leader stands off the surface before turning, as a fraction of
+#: text height. Long enough to read as perpendicular, short enough not to float.
+STUB = 0.8
+
 #: Gap between neighbouring grid cells, as a fraction of text height.
 CELL_GAP = 0.8
 #: The label block on one bounding box face may grow to this multiple of that
@@ -62,6 +66,19 @@ class PlacedLabel:
     def normal(self) -> Vec:
         x, y = self.x_dir, self.y_dir
         return cross(x, y)
+
+
+def _stands_off(annotation: Annotation) -> bool:
+    """Whether the leader can leave along the surface without entering the part.
+
+    A face's normal points out of the solid, which for a bore wall means *into*
+    the hole. Standing off along it there would send the leader through material
+    on its way back out. It is only safe where the surface faces the same way the
+    label is read from.
+    """
+    if annotation.surface is None or annotation.normal is None:
+        return False
+    return dot(annotation.surface, annotation.normal) > 0.2
 
 
 def _plane_axes(normal: Vec) -> tuple[Vec, Vec]:
@@ -204,9 +221,15 @@ def layout(
             origin = add(add(plane_point, scale(x_dir, u)), scale(y_dir, v))
             # Leader: out of the label's lower-left corner, across the label plane
             # to the feature's own position in it, then straight in to the feature.
+            # The last leg leaves the surface along its own normal, as a drawing's
+            # does, rather than along whichever axis the label plane happens to be:
+            # into a bore wall that is the difference between radial and sideways.
             elbow = add(origin, scale(y_dir, -0.35 * height))
-            gap = base - dot(annotation.anchor, normal)
-            anchor_in_plane = add(annotation.anchor, scale(normal, gap))
-            leader = (elbow, anchor_in_plane, annotation.anchor)
+            stub = annotation.anchor
+            surface = annotation.surface if _stands_off(annotation) else None
+            if surface is not None:
+                stub = add(annotation.anchor, scale(surface, STUB * height))
+            gap = base - dot(stub, normal)
+            leader = (elbow, add(stub, scale(normal, gap)), stub, annotation.anchor)
             placed.append(PlacedLabel(annotation, origin, x_dir, y_dir, height, leader))
     return placed

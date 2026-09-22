@@ -46,6 +46,11 @@ class Annotation:
     #: Excluded from equality: they carry live topology, not comparable values.
     faces: tuple[Any, ...] = field(default_factory=tuple, compare=False, repr=False)
     detail: dict[str, object] = field(default_factory=dict)
+    #: The part's own normal where the leader lands, kept apart from ``normal``
+    #: because the sight test replaces that with the direction the label is read
+    #: from. A leader that leaves the surface along this reads as a drawing's does.
+    #: Last in the field list: the adapters build annotations positionally.
+    surface: Vec | None = None
 
     @property
     def label(self) -> str:

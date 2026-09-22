@@ -164,3 +164,36 @@ def test_thickness_families_still_carry_their_value(converted):
         kind, value = written[annotation.label]
         assert kind.startswith("Size")
         assert value == pytest.approx(float(annotation.value), rel=1e-6)
+
+
+def test_a_turned_step_supersedes_the_boss_on_the_same_face(spool, tmp_path):
+    """A turned cylinder is also, technically, a boss. Labelling it both ways put
+    two callouts on one face that did not even agree: the boss measured its
+    height from a different place than the turned step measured its length."""
+    report = convert(spool, tmp_path / "turned.step", quiet=True)
+    owner: dict[object, set[str]] = {}
+    for annotation in report.annotations:
+        for face in annotation.faces:
+            owner.setdefault(face, set()).add(annotation.family)
+    assert report.superseded > 0, "the fixture no longer exercises the overlap"
+    assert not [f for f, families in owner.items() if {"bosses", "turned_steps"} <= families]
+
+
+def test_a_leader_arrives_along_the_surface_normal(converted):
+    """Into a bore wall, the difference between radial and sideways.
+
+    Only where the surface faces the way the label is read from: a hole's own
+    normal points into the bore, and standing off along it would send the leader
+    back out through the material.
+    """
+    from quid2pmi.geometry import normalise, sub
+    from quid2pmi.layout import _stands_off, layout
+
+    report, part = converted
+    placed = [p for p in layout(list(report.annotations), _box(part)) if _stands_off(p.annotation)]
+    assert placed, "no annotation stands its leader off the surface"
+    for label in placed:
+        last = normalise(sub(label.leader[-2], label.leader[-1]))
+        assert last is not None
+        along = sum(last[i] * label.annotation.surface[i] for i in range(3))
+        assert along == pytest.approx(1.0, abs=1e-6), label.annotation.label

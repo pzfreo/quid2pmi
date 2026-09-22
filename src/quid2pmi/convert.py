@@ -35,6 +35,8 @@ class ConversionReport:
     attached: int
     #: Faces coloured by their feature family.
     coloured: int
+    #: Labels dropped because a more specific family proved the same face.
+    superseded: int
     annotations: tuple[Annotation, ...]
 
     @property
@@ -52,6 +54,7 @@ class ConversionReport:
             "obstructed": self.obstructed,
             "attached": self.attached,
             "coloured": self.coloured,
+            "superseded": self.superseded,
             "labels": [
                 {
                     "family": a.family,
@@ -88,6 +91,34 @@ def resolve_families(requested: list[str] | None) -> set[str]:
             else:
                 chosen.add(name)
     return chosen
+
+
+#: Families that describe the same geometry in different words. Where two
+#: annotations are proved on the same face, only the more specific one is
+#: labelled. A turned step names the diameter and the length a lathe works to,
+#: which is what the feature is; the boss it is also technically an instance of
+#: says less and measures its height differently, so the two disagreed in print:
+#: "BOSS D130.94 H 56.42" beside "TURNED D130.94 L57.42" on one cylinder.
+SUPERSEDES: dict[str, frozenset[str]] = {"turned_steps": frozenset({"bosses"})}
+
+
+def _drop_superseded(annotations: list[Annotation]) -> tuple[list[Annotation], int]:
+    """Keep one label per face where two families claim the same geometry."""
+    claimants: dict[Any, set[str]] = {}
+    for annotation in annotations:
+        for face in annotation.faces:
+            claimants.setdefault(face, set()).add(annotation.family)
+
+    kept: list[Annotation] = []
+    for annotation in annotations:
+        beaten = any(
+            annotation.family in SUPERSEDES.get(other, frozenset())
+            for face in annotation.faces
+            for other in claimants[face]
+        )
+        if not beaten:
+            kept.append(annotation)
+    return kept, len(annotations) - len(kept)
 
 
 def _by_family(annotations: Sequence[Annotation]) -> dict[str, int]:
@@ -150,6 +181,8 @@ def convert(
         for family, count in extra_unplaced.items():
             unplaced[family] = unplaced.get(family, 0) + count
 
+    annotations, superseded = _drop_superseded(annotations)
+
     say("choosing leader directions")
     box = _bounding_box(part)
     tester = SightTester(part.wrapped, box.diagonal * 4.0)
@@ -211,5 +244,6 @@ def convert(
         obstructed,
         attached,
         coloured,
+        superseded,
         kept,
     )
