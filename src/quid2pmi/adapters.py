@@ -715,10 +715,6 @@ def _hole_callout(d: dict[str, Any]) -> str:
     return " ".join(parts)
 
 
-#: How each family reads as a drawing callout: the value, then the feature word.
-#: Written separately from the terse STEP label because a drawing leads with the
-#: size and says what the feature is quietly, where a STEP annotation name has to
-#: identify the family first.
 def _across_flats(profile: Any) -> float | None:
     """The size across a closed straight-sided profile's flats, when it has one.
 
@@ -741,12 +737,18 @@ def _across_flats(profile: Any) -> float | None:
         return None
     cu = sum(u for u, _ in flat) / len(flat)
     cv = sum(v for _, v in flat) / len(flat)
-    spans = []
+    spans, edges = [], []
     for (u1, v1), (u2, v2) in zip(flat, (*flat[1:], flat[0]), strict=True):
         edge = math.hypot(u2 - u1, v2 - v1)
         if edge == 0.0:
             return None
+        edges.append(edge)
         spans.append(2.0 * abs((u2 - u1) * (cv - v1) - (v2 - v1) * (cu - u1)) / edge)
+    # Only a regular polygon has one size across flats, and quiddity names a
+    # section hexagonal by counting its corners: an L-shaped pocket has six
+    # straight sides too, and no size across flats to state.
+    if any(max(values) - min(values) > 0.01 * max(values) for values in (spans, edges)):
+        return None
     return min(spans)
 
 
@@ -772,6 +774,10 @@ def _section_recess_callout(d: dict[str, Any]) -> tuple[str, str]:
     return size, word
 
 
+#: How each family reads as a drawing callout: the value, then the feature word.
+#: Written separately from the terse STEP label because a drawing leads with the
+#: size and says what the feature is quietly, where a STEP annotation name has to
+#: identify the family first.
 _CALLOUTS: dict[str, Callable[[dict[str, Any]], tuple[str, str]]] = {
     "holes": lambda d: (_hole_callout(d), "hole"),
     "bosses": lambda d: (

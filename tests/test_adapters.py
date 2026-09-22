@@ -358,3 +358,22 @@ def test_an_arc_sided_profile_has_no_size_across_flats():
 
     boundary = [{"point": [1.0, 0.0], "bulge": 0.5}, {"point": [-1.0, 0.0], "bulge": 0.5}]
     assert _across_flats({"closure": "closed", "boundary": boundary}) is None
+
+
+def test_an_irregular_six_sided_pocket_has_no_size_across_flats():
+    """quiddity calls a section hexagonal by counting corners, so an L-shaped
+    pocket arrives as one. Claiming a size across its flats invents a dimension."""
+    from quid2pmi.adapters import callout_for
+
+    corners = [(0, 0), (10, 0), (10, 3), (4, 3), (4, 8), (0, 8)]
+    record = {
+        "geometry": {
+            "run_interval": [-2.0, 0.0],
+            "profile": {
+                "closure": "closed",
+                "boundary": [{"point": list(c), "bulge": 0.0} for c in corners],
+            },
+        },
+        "classification": {"feature_kind": "pocket", "section_shape": "hexagonal"},
+    }
+    assert callout_for("section_recesses", record, ("POCKET",)) == ("↧2", "hexagonal pocket")
