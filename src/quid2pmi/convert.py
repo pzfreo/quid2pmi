@@ -145,21 +145,45 @@ def _at_the_mouth(annotation: Annotation, on_part: Callable[[Vec], bool]) -> Ann
     return replace(annotation, anchor=moved) if on_part(moved) else annotation
 
 
-def _reading_directions(annotation: Annotation, box: BoundingBox) -> list[Vec]:
+def _facing_out(annotation: Annotation, tester: SightTester) -> Annotation:
+    """Turn the surface normal around when it points into the material.
+
+    A face taken out of a solid carries its own orientation, which need not be
+    the solid's: on the NIST channels and slots the normal pointed straight into
+    the part, so a ray along it ran zero distance and the leader was left to
+    arrive along a bounding-box axis instead. Whichever way has the longer run
+    out is the way out.
+    """
+    surface = annotation.surface
+    if surface is None:
+        return annotation
+    backwards = scale(surface, -1.0)
+    if tester.clear_run(annotation.anchor, backwards) > tester.clear_run(
+        annotation.anchor, surface
+    ):
+        return replace(annotation, surface=backwards)
+    return annotation
+
+
+def _reading_directions(annotation: Annotation) -> list[Vec]:
     """Where to stand to read this feature's label, best first.
 
-    The face's own normal, when it faces away from the part -- a turned step is
-    read from the side it presents, not from along the lathe axis, and a leader
-    that arrives axially meets the cylinder edge-on. A bore's normal points into
-    the hole, which is no place to stand, so there the feature's own axis wins.
+    The face's own normal leads: a turned step is read from the side it presents,
+    not from along the lathe axis, and a leader that arrives axially meets the
+    cylinder edge-on. Whether that direction is any good is not decided here --
+    the sight test takes the first one with a clear run out of the part, which
+    rejects a bore's normal, since that points across the hole into the far wall,
+    and accepts the floor of a channel, which is open to the air.
+
+    Judging it by whether the normal faces away from the part's centre, as this
+    did at first, is a guess at the same question: it passed turned steps and
+    refused the channels and slots that a ray would have walked straight out of.
     """
-    out: list[Vec] = []
-    outward = normalise(sub(annotation.anchor, box.centre))
-    if annotation.surface is not None and (outward is None or dot(annotation.surface, outward) > 0):
-        out.append(annotation.surface)
-    if annotation.normal is not None:
-        out.append(annotation.normal)
-    return out
+    return [
+        direction
+        for direction in (annotation.surface, annotation.normal)
+        if direction is not None
+    ]
 
 
 def _by_family(annotations: Sequence[Annotation]) -> dict[str, int]:
@@ -232,12 +256,11 @@ def convert(
     obstructed = 0
     sighted: list[Annotation] = []
     for annotation in annotations:
+        annotation = _facing_out(annotation, tester)
         # Test the direction the layout will actually use. The layout snaps a label
         # to one of the six bounding box faces, so sight-testing an unsnapped face
         # normal would clear a direction that is then never used.
-        preferred = [
-            snap_to_axis(direction) for direction in _reading_directions(annotation, box)
-        ]
+        preferred = [snap_to_axis(direction) for direction in _reading_directions(annotation)]
         direction, clear = tester.choose(annotation.anchor, preferred)
         obstructed += 0 if clear else 1
         sighted.append(replace(annotation, normal=direction))
