@@ -626,10 +626,26 @@ def _section_recess(d: dict[str, Any]) -> Annotation | None:
     # Recognition proves the walls of the socket instead, so without the mouth
     # the leader lands on a wall halfway down a hex pocket you cannot see into --
     # the same defect convert._at_the_mouth was written to bring a hole back from.
+    #
+    # Only for a closed section. There the run is the depth, and the open end is
+    # the mouth. An open section's run is a sweep along the surface, and its open
+    # end is merely where the recess leaves the side of the part: pointing at that
+    # took an edge-open recess on corpus part 363 off a face it was proved on and
+    # put the arrowhead on a silhouette edge 7.5 away.
+    closed = isinstance(profile, dict) and profile.get("closure") == "closed"
     mouth: Vec | None = None
     outward: Vec | None = None
     run_axis = as_point(frame.get("run"))
-    if isinstance(ends, dict) and run_axis is not None and isinstance(run, (list, tuple)):
+    if (
+        closed
+        and isinstance(ends, dict)
+        and run_axis is not None
+        # Two values, as the length block above also insists: indexing a shorter
+        # interval by end would raise, and an adapter reports an unusable record
+        # by returning rather than by aborting the whole conversion.
+        and isinstance(run, (list, tuple))
+        and len(run) == 2
+    ):
         open_ends = [
             index
             for index, name in enumerate(("low", "high"))

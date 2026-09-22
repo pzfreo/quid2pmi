@@ -408,3 +408,26 @@ def test_a_recess_open_at_both_ends_has_no_one_mouth():
     (annotation,), _ = annotate(FakeResult(section_recesses=[Rec(record)]), {"section_recesses"})
     assert annotation.detail == {}
     assert annotation.normal is None
+
+
+def test_an_open_section_recess_has_no_mouth():
+    """An open profile's run sweeps along the surface rather than down into it, so
+    its open end is where the recess leaves the side of the part, not a mouth.
+    Pointing at it took corpus part 363's edge-open recess 7.5 off the face it was
+    proved on and put the arrowhead on a silhouette edge."""
+    record = _hex_pocket()
+    record["geometry"]["profile"]["closure"] = "open"
+    record["classification"]["feature_kind"] = "edge_open_recess"
+    (annotation,), _ = annotate(FakeResult(section_recesses=[Rec(record)]), {"section_recesses"})
+    assert annotation.detail == {}
+    assert annotation.normal is None
+
+
+def test_a_recess_with_a_one_ended_run_interval_is_still_annotated():
+    """A record the adapter cannot read fully is reported, not raised on: indexing
+    a short interval by end would abort the whole conversion."""
+    record = _hex_pocket()
+    record["geometry"]["run_interval"] = [0.0]
+    (annotation,), _ = annotate(FakeResult(section_recesses=[Rec(record)]), {"section_recesses"})
+    assert annotation.detail == {}
+    assert annotation.value is None
