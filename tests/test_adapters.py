@@ -2,6 +2,8 @@
 
 import math
 
+import pytest
+
 from quid2pmi.adapters import DIAMETER_SIGN, annotate, generic_annotation, num
 from quid2pmi.model import DIM_DIAMETER, DIM_RADIUS
 
@@ -318,8 +320,15 @@ def _hex_pocket(across_flats=4.3, depth=1.9):
     ]
     return {
         "geometry": {
+            "frame": {
+                "origin": [0.0, 0.0, 0.0],
+                "run": [0.0, 0.0, 1.0],
+                "u": [1.0, 0.0, 0.0],
+                "v": [0.0, 1.0, 0.0],
+            },
             "run_interval": [-depth, 0.0],
             "profile": {"closure": "closed", "boundary": boundary},
+            "ends": {"low": {"condition": "open"}, "high": {"condition": "capped"}},
         },
         "classification": {"feature_kind": "pocket", "section_shape": "hexagonal"},
     }
@@ -377,3 +386,25 @@ def test_an_irregular_six_sided_pocket_has_no_size_across_flats():
         "classification": {"feature_kind": "pocket", "section_shape": "hexagonal"},
     }
     assert callout_for("section_recesses", record, ("POCKET",)) == ("↧2", "hexagonal pocket")
+
+
+def test_a_pocket_records_the_end_it_opens_at():
+    """Recognition proves a recess's walls, so the leader landed on one of them,
+    halfway down a socket nobody can see into. convert._at_the_mouth brings it
+    back out, but only for a record that says where the mouth is."""
+    (annotation,), _ = annotate(FakeResult(section_recesses=[Rec(_hex_pocket(depth=1.9))]), {
+        "section_recesses"
+    })
+    assert annotation.detail["mouth"] == pytest.approx((0.0, 0.0, -1.9))
+    assert annotation.detail["axis"] == (0.0, 0.0, 1.0)
+    # The low end is the open one, so the label reads from below.
+    assert annotation.normal == pytest.approx((0.0, 0.0, -1.0))
+
+
+def test_a_recess_open_at_both_ends_has_no_one_mouth():
+    """A passage opens at both ends; neither is the plane a drawing points at."""
+    record = _hex_pocket()
+    record["geometry"]["ends"] = {"low": {"condition": "open"}, "high": {"condition": "open"}}
+    (annotation,), _ = annotate(FakeResult(section_recesses=[Rec(record)]), {"section_recesses"})
+    assert annotation.detail == {}
+    assert annotation.normal is None
