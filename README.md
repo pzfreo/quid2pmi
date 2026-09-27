@@ -22,12 +22,7 @@ The original geometry is written unchanged; nothing is added to or removed from 
 uv pip install -e .
 ```
 
-Quiddity and build123d (which supplies the OCCT kernel via OCP) are the only dependencies. If
-the required Quiddity version is not yet on PyPI, install it from its checkout first:
-
-```bash
-uv pip install -e ../quiddity -e .
-```
+The package requires Quiddity 0.3.6 or newer. build123d supplies the OCCT kernel via OCP.
 
 The tests read Quiddity's STEP corpus, which this package does not redistribute. They look for
 it beside this repo and skip if it is absent; set `QUIDDITY_CORPUS` to point elsewhere.
