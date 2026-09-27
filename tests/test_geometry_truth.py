@@ -174,17 +174,31 @@ def test_thickness_families_still_carry_their_value(converted):
         assert value == pytest.approx(float(annotation.value), rel=1e-6)
 
 
-def test_a_turned_step_supersedes_the_boss_on_the_same_face(spool, tmp_path):
-    """A turned cylinder is also, technically, a boss. Labelling it both ways put
-    two callouts on one face that did not even agree: the boss measured its
-    height from a different place than the turned step measured its length."""
+def test_a_turned_step_and_boss_do_not_share_a_labelled_face(spool, tmp_path):
+    """Only one of these descriptions should label a given cylindrical face."""
     report = convert(spool, tmp_path / "turned.step", quiet=True)
     owner: dict[object, set[str]] = {}
     for annotation in report.annotations:
         for face in annotation.faces:
             owner.setdefault(face, set()).add(annotation.family)
-    assert report.superseded > 0, "the fixture no longer exercises the overlap"
     assert not [f for f, families in owner.items() if {"bosses", "turned_steps"} <= families]
+
+
+def test_a_turned_step_supersedes_a_boss_on_the_same_face():
+    """Keep the more specific label if recognition returns both descriptions."""
+    from quid2pmi.convert import _drop_superseded
+    from quid2pmi.model import Annotation
+
+    shared_face = object()
+    other_face = object()
+    boss = Annotation("bosses", ("BOSS",), (0.0, 0.0, 0.0), faces=(shared_face,))
+    turned = Annotation("turned_steps", ("TURNED",), (0.0, 0.0, 0.0), faces=(shared_face,))
+    independent = Annotation("bosses", ("BOSS",), (1.0, 0.0, 0.0), faces=(other_face,))
+
+    kept, superseded = _drop_superseded([boss, turned, independent])
+
+    assert kept == [turned, independent]
+    assert superseded == 1
 
 
 def test_a_leader_arrives_along_the_surface_normal(converted):
