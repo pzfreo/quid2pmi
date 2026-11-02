@@ -1,6 +1,12 @@
 # quid2pmi
 
-Make [Quiddity](https://github.com/pzfreo/quiddity) feature recognition results visible in a
+> **This project is archived.** To add manufacturing PMI to a STEP file, use
+> [Specify](https://github.com/pzfreo/specify-core) (`pip install specify-core`, or
+> [in the browser](https://editor.draftwright.io/specify)). It recognises the features with quiddity
+> and writes semantic AP242 PMI with drawn callouts. The PMI writing itself is
+> [haecceity](https://github.com/pzfreo/quiddity-rust), in the `quiddity` package.
+
+Make [Quiddity](https://github.com/pzfreo/quiddity-python) feature recognition results visible in a
 CAD viewer.
 
 `quid2pmi` reads a STEP file, runs Quiddity's recognisers over it, and writes a new STEP file
